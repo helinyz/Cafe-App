@@ -1,0 +1,9 @@
+/* Chrome, Safari ve Opera için scrollbar gizleme */
+*::-webkit-scrollbar {
+  display: none;
+}
+
+/* Firefox için */
+* {
+  scrollbar-width: none;
+}
