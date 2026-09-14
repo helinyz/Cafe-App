@@ -1,8 +1,12 @@
 import { useState, useEffect } from "react";
-import { db } from "../firebase";
+import { db, auth } from "../firebase";
 import { collection, onSnapshot, doc, updateDoc, deleteDoc, query, orderBy, limit } from "firebase/firestore";
+import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
 
 export default function BaristaPage() {
+  const [user, setUser] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [loginError, setLoginError] = useState("");
   const [orders, setOrders] = useState([]);
   const [hesapIstekleri, setHesapIstekleri] = useState([]);
   const [completedOrders, setCompletedOrders] = useState([]);
@@ -13,6 +17,24 @@ export default function BaristaPage() {
   const CAFE_ID = "qCW9g5eYB4ycmkIHCHSZ";
 
   useEffect(() => {
+    return onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setAuthChecked(true);
+    });
+  }, []);
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setLoginError("");
+    try {
+      await signInWithEmailAndPassword(auth, e.target.email.value, e.target.password.value);
+    } catch {
+      setLoginError("E-posta veya şifre hatalı.");
+    }
+  };
+
+  useEffect(() => {
+    if (!user) return;
     const ordersRef = collection(db, "cafes", CAFE_ID, "orders");
     
     // Aktif ve Hesap İstekleri Dinleyicisi
@@ -39,7 +61,7 @@ export default function BaristaPage() {
       unsubscribeActive();
       unsubscribeCompleted();
     };
-  }, []);
+  }, [user]);
 
   const updateOrderStatus = async (orderId, newStatus) => {
     try {
@@ -73,20 +95,35 @@ export default function BaristaPage() {
     return diffInMins < 1 ? "Az önce" : `${diffInMins} dk önce`;
   };
 
+  if (!authChecked) return <div style={{ textAlign: "center", marginTop: 50, fontWeight: 700 }}>Yükleniyor...</div>;
+
+  if (!user) return (
+    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh", background: "#f9fafb", fontFamily: "-apple-system, sans-serif" }}>
+      <form onSubmit={handleLogin} style={{ background: "#fff", padding: 32, borderRadius: 16, border: "1px solid #e5e7eb", width: "100%", maxWidth: 340, display: "flex", flexDirection: "column", gap: 14 }}>
+        <p style={{ margin: 0, fontSize: 20, fontWeight: 700, textAlign: "center" }}>Barista Girişi</p>
+        <input name="email" type="email" placeholder="E-posta" required style={{ padding: "11px 14px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+        <input name="password" type="password" placeholder="Şifre" required style={{ padding: "11px 14px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+        {loginError && <p style={{ margin: 0, fontSize: 12, color: "#b91c1c" }}>{loginError}</p>}
+        <button type="submit" style={{ padding: "12px 24px", borderRadius: 8, background: "#111", color: "#fff", border: "none", cursor: "pointer", fontWeight: 700 }}>Giriş Yap</button>
+      </form>
+    </div>
+  );
+
   if (loading) return <div style={{ textAlign: "center", marginTop: 50, fontWeight: 700 }}>Yükleniyor...</div>;
 
   return (
     <div style={{ fontFamily: "-apple-system, sans-serif", maxWidth: 600, margin: "0 auto", padding: "20px 16px 100px" }}>
-      
+
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 24 }}>
         <div>
           <p style={{ margin: 0, fontSize: 12, color: "#9ca3af", fontWeight: 700 }}>FLORA CAFE</p>
           <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800 }}>Barista Paneli</h1>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
            <Badge color="#6d28d9" bg="#f5f3ff" count={hesapIstekleri.length} label="Hesap" />
            <Badge color="#b45309" bg="#fef3c7" count={orders.length} label="Mutfak" />
+           <button onClick={() => signOut(auth)} style={{ padding: "6px 12px", borderRadius: 8, background: "#fff", border: "1px solid #e5e7eb", fontSize: 12, cursor: "pointer", fontWeight: 600 }}>Çıkış</button>
         </div>
       </div>
 

@@ -7,6 +7,9 @@ import { collection, query, where, getDocs, addDoc, serverTimestamp, onSnapshot 
 import { tr } from "../locales/tr";
 import { en } from "../locales/en";
 
+// Çevrimdışı sipariş kuyruğu
+import { kuyruğaEkle, kuyruğuBoşalt } from "../utils/offlineQueue";
+
 export default function CustomerPage() {
   const { cafeSlug } = useParams();
   const [searchParams] = useSearchParams();
@@ -82,6 +85,14 @@ export default function CustomerPage() {
     }
   }, [cafeId, menu]);
 
+  useEffect(() => {
+    if (!cafeId) return;
+    kuyruğuBoşalt(cafeId, db, addDoc, collection);
+    const flushOnReconnect = () => kuyruğuBoşalt(cafeId, db, addDoc, collection);
+    window.addEventListener("online", flushOnReconnect);
+    return () => window.removeEventListener("online", flushOnReconnect);
+  }, [cafeId]);
+
   // YARDIMCI FONKSİYONLAR
   const getKategoriIsmi = (kat) => {
     if (dil === "tr") return kat;
@@ -110,23 +121,40 @@ export default function CustomerPage() {
 
   const placeOrder = async () => {
     if (cart.length === 0) return;
+    const siparisVerisi = {
+      tableNumber,
+      items: cart.map(i => ({
+        name: dil === "tr" ? i.name : (i.nameEN || i.name),
+        qty: i.qty,
+        price: i.price
+      })),
+      totalPrice: cart.reduce((s, i) => s + (i.price * i.qty), 0),
+      status: "pending",
+      not: siparisnotu.trim() || null
+    };
+
+    if (!navigator.onLine) {
+      kuyruğaEkle(siparisVerisi);
+      setCart([]);
+      setSepetAcik(false);
+      setOrderPlaced(true);
+      return;
+    }
+
     try {
       await addDoc(collection(db, "cafes", cafeId, "orders"), {
-        tableNumber,
-        items: cart.map(i => ({ 
-          name: dil === "tr" ? i.name : (i.nameEN || i.name), 
-          qty: i.qty, 
-          price: i.price 
-        })),
-        totalPrice: cart.reduce((s, i) => s + (i.price * i.qty), 0),
-        status: "pending",
-        createdAt: serverTimestamp(),
-        not: siparisnotu.trim() || null
+        ...siparisVerisi,
+        createdAt: serverTimestamp()
       });
       setCart([]);
       setSepetAcik(false);
       setOrderPlaced(true);
-    } catch (err) { alert("Sipariş hatası!"); }
+    } catch {
+      kuyruğaEkle(siparisVerisi);
+      setCart([]);
+      setSepetAcik(false);
+      setOrderPlaced(true);
+    }
   };
 
   const hesapIste = async () => {
