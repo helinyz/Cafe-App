@@ -12,6 +12,13 @@ dist
 dist-ssr
 *.local
 
+# Python service (Faz 1+)
+service/.venv
+service/__pycache__
+service/**/__pycache__
+service/.env
+service/serviceAccountKey.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

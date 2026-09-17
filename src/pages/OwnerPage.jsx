@@ -5,6 +5,9 @@ import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebas
 import { QRCodeCanvas } from "qrcode.react";
 
 const BASE_URL = window.location.origin; // Localhost veya domain neyse onu otomatik alır
+// "localhost" yerine 127.0.0.1: bu makinede 8000 portunu Docker da IPv6'da
+// dinliyor, "localhost" tarayıcıda IPv6'ya çözülünce yanlış servise çarpıyordu.
+const FORECAST_API_URL = import.meta.env.VITE_FORECAST_API_URL || "http://127.0.0.1:8000";
 
 const theme = {
   fontSans: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
@@ -49,6 +52,12 @@ export default function OwnerPage() {
   const [itemGlutensiz, setItemGlutensiz] = useState(false); // <-- YENİ
   
   const [editingId, setEditingId] = useState(null);
+
+  // TAHMİN (Faz 1) STATES
+  const [forecastMetric, setForecastMetric] = useState("item_count");
+  const [forecastData, setForecastData] = useState(null);
+  const [forecastLoading, setForecastLoading] = useState(false);
+  const [forecastError, setForecastError] = useState("");
 
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, (currentUser) => {
@@ -157,6 +166,26 @@ export default function OwnerPage() {
     }
   };
 
+  useEffect(() => {
+    if (aktifSekme !== "tahmin" || !cafeSlug) return;
+    let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- veri çekimi başlarken loading/error state'i sıfırlanıyor, idiomatik data-fetching deseni
+    setForecastLoading(true);
+    setForecastError("");
+    fetch(`${FORECAST_API_URL}/forecast/${cafeSlug}?metric=${forecastMetric}`)
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.detail || `Sunucu hatası (${res.status})`);
+        }
+        return res.json();
+      })
+      .then((data) => { if (!cancelled) setForecastData(data); })
+      .catch((err) => { if (!cancelled) setForecastError(err.message || "Tahmin servisine ulaşılamadı."); })
+      .finally(() => { if (!cancelled) setForecastLoading(false); });
+    return () => { cancelled = true; };
+  }, [aktifSekme, cafeSlug, forecastMetric]);
+
   const downloadQR = () => {
     const canvas = document.getElementById("qr-canvas");
     const link = document.createElement("a");
@@ -210,7 +239,8 @@ export default function OwnerPage() {
       <div style={{ display: "flex", gap: 0, padding: "0 24px 20px" }}>
         <button onClick={() => setAktifSekme("menu")} style={tabStyle(aktifSekme === "menu", "left")}>Menü</button>
         <button onClick={() => setAktifSekme("qr")} style={tabStyle(aktifSekme === "qr", "none")}>QR</button>
-        <button onClick={() => setAktifSekme("siparisler")} style={tabStyle(aktifSekme === "siparisler", "right")}>Siparişler</button>
+        <button onClick={() => setAktifSekme("siparisler")} style={tabStyle(aktifSekme === "siparisler", "none")}>Siparişler</button>
+        <button onClick={() => setAktifSekme("tahmin")} style={tabStyle(aktifSekme === "tahmin", "right")}>Tahmin</button>
       </div>
 
       <div style={{ padding: "0 24px" }}>
@@ -339,6 +369,83 @@ export default function OwnerPage() {
             )}
           </div>
         )}
+
+        {aktifSekme === "tahmin" && (
+          <div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+              <button
+                onClick={() => setForecastMetric("item_count")}
+                style={forecastMetric === "item_count" ? metricBtnActive : metricBtnInactive}
+              >
+                Ürün Adedi
+              </button>
+              <button
+                onClick={() => setForecastMetric("total_price")}
+                style={forecastMetric === "total_price" ? metricBtnActive : metricBtnInactive}
+              >
+                Ciro (₺)
+              </button>
+            </div>
+
+            {forecastLoading && (
+              <p style={{ textAlign: "center", color: "#9ca3af", marginTop: 40 }}>Tahmin hesaplanıyor...</p>
+            )}
+
+            {!forecastLoading && forecastError && (
+              <div style={{ background: theme.bgDanger, border: `1px solid ${theme.borderDanger}`, color: theme.textDanger, borderRadius: theme.radiusMd, padding: 14, fontSize: 13 }}>
+                {forecastError}
+                <p style={{ margin: "6px 0 0", fontSize: 12, opacity: 0.8 }}>
+                  Talep tahmini servisinin (FastAPI) çalıştığından emin ol: <code>uvicorn app.main:app --port 8000</code>
+                </p>
+              </div>
+            )}
+
+            {!forecastLoading && !forecastError && forecastData?.insufficient_data && (
+              <div style={{ background: theme.bgSecondary, border: `1px solid ${theme.borderTertiary}`, borderRadius: theme.radiusMd, padding: 14, fontSize: 13, color: theme.textSecondary }}>
+                {forecastData.note}
+              </div>
+            )}
+
+            {!forecastLoading && !forecastError && forecastData && !forecastData.insufficient_data && (
+              <>
+                <div style={{ background: theme.bgSecondary, borderRadius: theme.radiusMd, padding: 12, marginBottom: 16, fontSize: 12, color: theme.textSecondary }}>
+                  {forecastData.note}
+                  <div style={{ display: "flex", gap: 16, marginTop: 6, fontWeight: 700, color: theme.textPrimary }}>
+                    <span>Baseline MAE: {forecastData.baseline_mae}</span>
+                    <span>Prophet MAE: {forecastData.prophet_mae}</span>
+                  </div>
+                </div>
+
+                {(() => {
+                  const maxVal = Math.max(1, ...forecastData.baseline, ...forecastData.prophet);
+                  return forecastData.dates.map((date, idx) => {
+                    const b = forecastData.baseline[idx];
+                    const p = forecastData.prophet[idx];
+                    return (
+                      <div key={date} style={{ marginBottom: 14 }}>
+                        <p style={{ margin: "0 0 6px", fontSize: 12, fontWeight: 700 }}>{date}</p>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                          <span style={{ fontSize: 11, width: 60, color: theme.textSecondary }}>Baseline</span>
+                          <div style={{ flex: 1, background: theme.bgSecondary, borderRadius: 4, overflow: "hidden" }}>
+                            <div style={{ width: `${(b / maxVal) * 100}%`, background: "#9ca3af", height: 16, borderRadius: 4 }} />
+                          </div>
+                          <span style={{ fontSize: 11, width: 40, textAlign: "right" }}>{b}</span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontSize: 11, width: 60, color: theme.textSecondary }}>Prophet</span>
+                          <div style={{ flex: 1, background: theme.bgSecondary, borderRadius: 4, overflow: "hidden" }}>
+                            <div style={{ width: `${(p / maxVal) * 100}%`, background: theme.brandColor, height: 16, borderRadius: 4 }} />
+                          </div>
+                          <span style={{ fontSize: 11, width: 40, textAlign: "right" }}>{p}</span>
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -359,6 +466,8 @@ const itemCardStyle = { background: "#fff", border: `1px solid ${theme.borderTer
 const itemImageContainer = { width: 50, height: 50, borderRadius: 10, background: theme.bgSecondary, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", border: "1px solid #f0f0f0" };
 const itemImageStyle = { width: "100%", height: "100%", objectFit: "cover" };
 const qrContainerStyle = { textAlign: "center", paddingTop: 30 };
+const metricBtnActive = { padding: "8px 14px", borderRadius: theme.radiusMd, background: theme.brandColor, color: "#fff", border: "none", fontSize: 12, fontWeight: 700, cursor: "pointer" };
+const metricBtnInactive = { ...metricBtnActive, background: theme.bgSecondary, color: theme.textSecondary };
 const tabStyle = (active, pos) => ({
   flex: 1, padding: "12px", 
   borderRadius: pos === "left" ? "12px 0 0 12px" : pos === "right" ? "0 12px 12px 0" : "0",
