@@ -10,6 +10,10 @@ import { en } from "../locales/en";
 // Çevrimdışı sipariş kuyruğu
 import { kuyruğaEkle, kuyruğuBoşalt } from "../utils/offlineQueue";
 
+// "localhost" yerine 127.0.0.1: bkz. OwnerPage.jsx, bu makinede 8000 portunu
+// Docker da IPv6'da dinliyor ve "localhost" yanlış servise çözülebiliyor.
+const RECS_API_URL = import.meta.env.VITE_RECS_API_URL || "http://127.0.0.1:8000";
+
 export default function CustomerPage() {
   const { cafeSlug } = useParams();
   const [searchParams] = useSearchParams();
@@ -25,6 +29,7 @@ export default function CustomerPage() {
   const [siparisnotu, setSiparisNotu] = useState("");
   const [aramaMetni, setAramaMetni] = useState("");
   const [populerUrunler, setPopulerUrunler] = useState([]);
+  const [oneriler, setOneriler] = useState([]);
 
   // YENİ ÖZELLİK: Gluten Filtresi
   const [glutenFiltre, setGlutenFiltre] = useState(false);
@@ -84,6 +89,22 @@ export default function CustomerPage() {
       hesaplaPopuler();
     }
   }, [cafeId, menu]);
+
+  useEffect(() => {
+    if (!cafeId || cart.length === 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- sepet boşalınca önerileri temizliyor, idiomatik data-fetching deseni
+      setOneriler([]);
+      return;
+    }
+    const cartIds = cart.map(i => i.id).join(",");
+    const timer = setTimeout(() => {
+      fetch(`${RECS_API_URL}/recommendations/${cafeSlug}?cart_item_ids=${cartIds}`)
+        .then(res => res.ok ? res.json() : { items: [] })
+        .then(data => setOneriler(data.items || []))
+        .catch(() => setOneriler([]));
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [cafeId, cafeSlug, cart]);
 
   useEffect(() => {
     if (!cafeId) return;
@@ -365,6 +386,24 @@ export default function CustomerPage() {
                 <div style={{ fontWeight: 800 }}>{i.price * i.qty} ₺</div>
               </div>
             ))}
+
+            {oneriler.length > 0 && (
+              <div style={{ marginTop: 10, marginBottom: 20 }}>
+                <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 800, color: "#6b7280" }}>
+                  {dil === "tr" ? "✨ Bunu da beğenebilirsin" : "✨ You might also like"}
+                </p>
+                <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 4, scrollbarWidth: "none" }}>
+                  {oneriler.map(item => (
+                    <div key={item.id} onClick={() => addToCart(item)} style={{ minWidth: 120, flexShrink: 0, background: "#f9fafb", borderRadius: 16, border: "1px solid #f3f4f6", padding: 10, textAlign: "center", cursor: "pointer" }}>
+                      <img src={item.imageUrl} style={{ width: 60, height: 60, borderRadius: 12, objectFit: "cover", marginBottom: 6 }} alt="" />
+                      <p style={{ margin: "0 0 2px", fontSize: 12, fontWeight: 700 }}>{dil === "en" ? (item.nameEN || item.name) : item.name}</p>
+                      <p style={{ margin: 0, fontSize: 12, fontWeight: 800, color: "#111" }}>+ {item.price} ₺</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <textarea placeholder={t.notEkle} value={siparisnotu} onChange={e => setSiparisNotu(e.target.value)} style={{ width: "100%", padding: 15, borderRadius: 18, margin: "20px 0", background: "#f3f4f6", border: "none", outline: "none", fontSize: 14, boxSizing: "border-box" }} />
             <button onClick={placeOrder} style={{ width: "100%", background: "#111", color: "#fff", padding: "20px", borderRadius: 22, fontWeight: 800, fontSize: 16, cursor: "pointer" }}>{t.siparisOnayla}</button>
           </div>

@@ -62,3 +62,41 @@ def fetch_orders_df(cafe_id: str) -> pd.DataFrame:
 
     df = pd.DataFrame(rows).sort_values("created_at")
     return df
+
+
+def fetch_menu_items(cafe_id: str) -> list[dict]:
+    db = get_db()
+    docs = db.collection("cafes").document(cafe_id).collection("menu").stream()
+    return [{"id": d.id, **d.to_dict()} for d in docs]
+
+
+def fetch_order_item_baskets(cafe_id: str, menu_items: list[dict]) -> list[set[str]]:
+    """Her siparişin hangi menü ürünlerini (id) içerdiğini döner.
+
+    Sipariş kayıtlarında ürün adı, siparişi veren müşterinin dil seçimine
+    göre TR veya EN olarak saklanıyor (bkz. CustomerPage.placeOrder), o
+    yüzden eşleştirme hem `name` hem `nameEN` üzerinden yapılıyor.
+    """
+    name_to_id: dict[str, str] = {}
+    for item in menu_items:
+        for key in ("name", "nameEN"):
+            value = item.get(key)
+            if value:
+                name_to_id[value.strip().lower()] = item["id"]
+
+    db = get_db()
+    orders_ref = db.collection("cafes").document(cafe_id).collection("orders")
+    baskets = []
+    for doc in orders_ref.stream():
+        data = doc.to_dict()
+        if data.get("status") == "hesap":
+            continue
+        basket = set()
+        for order_item in data.get("items") or []:
+            name = (order_item.get("name") or "").strip().lower()
+            item_id = name_to_id.get(name)
+            if item_id:
+                basket.add(item_id)
+        if len(basket) >= 2:
+            baskets.append(basket)
+    return baskets
