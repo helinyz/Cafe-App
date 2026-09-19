@@ -5,3 +5,4 @@ pandas==2.2.3
 numpy==1.26.4
 prophet==1.1.5
 python-dotenv==1.0.1
+requests==2.32.5

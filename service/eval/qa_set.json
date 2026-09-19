@@ -1,0 +1,100 @@
+[
+  {
+    "id": "tr-01",
+    "lang": "tr",
+    "question": "Cappuccino glutensiz mi?",
+    "expected_grounded": true,
+    "note": "Menüde glutensiz=true olarak açıkça belirtilmiş."
+  },
+  {
+    "id": "tr-02",
+    "lang": "tr",
+    "question": "Waffle glutensiz mi?",
+    "expected_grounded": true,
+    "note": "Menüde glutensiz=false olarak açıkça belirtilmiş."
+  },
+  {
+    "id": "tr-03",
+    "lang": "tr",
+    "question": "Cheesecake'te fıstık var mı?",
+    "expected_grounded": false,
+    "note": "Alerjen bilgisi menüde yapılandırılmış bir alan olarak yok; açıklamada geçmemesi 'yok' anlamına gelmemeli."
+  },
+  {
+    "id": "tr-04",
+    "lang": "tr",
+    "question": "Latte'nin fiyatı ne kadar?",
+    "expected_grounded": true,
+    "note": "Fiyat menüde doğrudan bir alan."
+  },
+  {
+    "id": "tr-05",
+    "lang": "tr",
+    "question": "En popüler tatlınız hangisi?",
+    "expected_grounded": false,
+    "note": "Popülerlik/satış verisi menü context'inde yok; bu asistanın bilmemesi gereken bir şey. (Sıkılaştırma öncesi bu soruda gerçek bir halüsinasyon gözlemlendi: model 'New York Cheesecake' diye kesin cevap verip grounded=true işaretlemişti.)"
+  },
+  {
+    "id": "tr-06",
+    "lang": "tr",
+    "question": "Waffle'da kaç kalori var?",
+    "expected_grounded": false,
+    "note": "Kalori/besin değeri bilgisi menü context'inde yok."
+  },
+  {
+    "id": "tr-07",
+    "lang": "tr",
+    "question": "Sushi var mı?",
+    "expected_grounded": true,
+    "note": "Menüde sushi hiç yok; 'menüde bu ürün yok' demek menüye dayalı, doğru şekilde grounded bir cevap."
+  },
+  {
+    "id": "tr-08",
+    "lang": "tr",
+    "question": "Türk Kahvesi hangi kategoride?",
+    "expected_grounded": true,
+    "note": "Kategori menüde doğrudan bir alan."
+  },
+  {
+    "id": "en-01",
+    "lang": "en",
+    "question": "Is the Espresso gluten-free?",
+    "expected_grounded": true,
+    "note": "Explicitly glutensiz=true in menu data."
+  },
+  {
+    "id": "en-02",
+    "lang": "en",
+    "question": "Does the Brownie contain nuts?",
+    "expected_grounded": false,
+    "note": "No structured allergen field; absence in description must not be read as 'no nuts'."
+  },
+  {
+    "id": "en-03",
+    "lang": "en",
+    "question": "How much does the Frappe cost?",
+    "expected_grounded": true,
+    "note": "Price is a direct menu field."
+  },
+  {
+    "id": "en-04",
+    "lang": "en",
+    "question": "What's your best-selling drink?",
+    "expected_grounded": false,
+    "note": "Sales/popularity data is not part of the menu context."
+  },
+  {
+    "id": "en-05",
+    "lang": "en",
+    "question": "Do you have sushi?",
+    "expected_grounded": true,
+    "note": "Item genuinely absent from menu; saying so is a grounded answer."
+  },
+  {
+    "id": "en-06",
+    "lang": "en",
+    "question": "How many calories does the Muffin have?",
+    "expected_grounded": false,
+    "note": "Nutrition info is not part of the menu context."
+  }
+]

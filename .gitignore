@@ -18,6 +18,7 @@ service/__pycache__
 service/**/__pycache__
 service/.env
 service/serviceAccountKey.json
+service/eval/last_run_results.json
 
 # Editor directories and files
 .vscode/*

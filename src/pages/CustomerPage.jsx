@@ -31,6 +31,12 @@ export default function CustomerPage() {
   const [populerUrunler, setPopulerUrunler] = useState([]);
   const [oneriler, setOneriler] = useState([]);
 
+  // MENÜ ASİSTANI (Faz 3 - RAG)
+  const [chatAcik, setChatAcik] = useState(false);
+  const [chatMesajlar, setChatMesajlar] = useState([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatYukleniyor, setChatYukleniyor] = useState(false);
+
   // YENİ ÖZELLİK: Gluten Filtresi
   const [glutenFiltre, setGlutenFiltre] = useState(false);
 
@@ -192,6 +198,27 @@ export default function CustomerPage() {
       });
       setHesapIstendi(true);
     } catch (err) { alert("Hesap hatası!"); }
+  };
+
+  const chatGonder = async () => {
+    const soru = chatInput.trim();
+    if (!soru || chatYukleniyor) return;
+    setChatMesajlar(prev => [...prev, { rol: "kullanici", metin: soru }]);
+    setChatInput("");
+    setChatYukleniyor(true);
+    try {
+      const res = await fetch(`${RECS_API_URL}/chat/${cafeSlug}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: soru, lang: dil })
+      });
+      const data = await res.json();
+      setChatMesajlar(prev => [...prev, { rol: "asistan", metin: data.answer || (dil === "tr" ? "Bir hata oluştu." : "Something went wrong.") }]);
+    } catch {
+      setChatMesajlar(prev => [...prev, { rol: "asistan", metin: dil === "tr" ? "Asistana şu an ulaşılamıyor." : "Can't reach the assistant right now." }]);
+    } finally {
+      setChatYukleniyor(false);
+    }
   };
 
   if (loading) return <div style={{ textAlign: "center", padding: 50, fontWeight: 700 }}>{t.yukleniyor}...</div>;
@@ -406,6 +433,69 @@ export default function CustomerPage() {
 
             <textarea placeholder={t.notEkle} value={siparisnotu} onChange={e => setSiparisNotu(e.target.value)} style={{ width: "100%", padding: 15, borderRadius: 18, margin: "20px 0", background: "#f3f4f6", border: "none", outline: "none", fontSize: 14, boxSizing: "border-box" }} />
             <button onClick={placeOrder} style={{ width: "100%", background: "#111", color: "#fff", padding: "20px", borderRadius: 22, fontWeight: 800, fontSize: 16, cursor: "pointer" }}>{t.siparisOnayla}</button>
+          </div>
+        </div>
+      )}
+
+      {/* MENÜ ASİSTANI - AÇMA BUTONU */}
+      {!chatAcik && (
+        <button
+          onClick={() => setChatAcik(true)}
+          style={{ position: "fixed", bottom: 95, right: 20, width: 54, height: 54, borderRadius: "50%", background: "#111", color: "#fff", border: "none", fontSize: 22, cursor: "pointer", boxShadow: "0 8px 20px rgba(0,0,0,0.25)", zIndex: 150 }}
+          aria-label={dil === "tr" ? "Menü asistanı" : "Menu assistant"}
+        >
+          💬
+        </button>
+      )}
+
+      {/* MENÜ ASİSTANI PANELİ */}
+      {chatAcik && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 300, display: "flex", alignItems: "flex-end" }} onClick={() => setChatAcik(false)}>
+          <div style={{ background: "#fff", width: "100%", borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: "20px 20px 24px", maxHeight: "75vh", display: "flex", flexDirection: "column" }} onClick={e => e.stopPropagation()}>
+            <div style={{ width: 40, height: 4, background: "#e5e7eb", borderRadius: 2, margin: "-10px auto 14px" }}></div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <h2 style={{ margin: 0, fontWeight: 900, fontSize: 18 }}>{dil === "tr" ? "🤖 Menü Asistanı" : "🤖 Menu Assistant"}</h2>
+              <button onClick={() => setChatAcik(false)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#9ca3af" }}>✕</button>
+            </div>
+
+            <div style={{ flex: 1, overflowY: "auto", marginBottom: 12, minHeight: 120 }}>
+              {chatMesajlar.length === 0 && (
+                <p style={{ color: "#9ca3af", fontSize: 13, textAlign: "center", marginTop: 20 }}>
+                  {dil === "tr" ? "Menü, fiyat veya glutensiz seçenekler hakkında soru sorabilirsin." : "Ask about the menu, prices, or gluten-free options."}
+                </p>
+              )}
+              {chatMesajlar.map((m, idx) => (
+                <div key={idx} style={{ display: "flex", justifyContent: m.rol === "kullanici" ? "flex-end" : "flex-start", marginBottom: 8 }}>
+                  <div style={{
+                    maxWidth: "80%", padding: "10px 14px", borderRadius: 16, fontSize: 14,
+                    background: m.rol === "kullanici" ? "#111" : "#f3f4f6",
+                    color: m.rol === "kullanici" ? "#fff" : "#111"
+                  }}>
+                    {m.metin}
+                  </div>
+                </div>
+              ))}
+              {chatYukleniyor && (
+                <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 8 }}>
+                  <div style={{ padding: "10px 14px", borderRadius: 16, fontSize: 14, background: "#f3f4f6", color: "#9ca3af" }}>
+                    {dil === "tr" ? "yazıyor..." : "typing..."}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                value={chatInput}
+                onChange={e => setChatInput(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && chatGonder()}
+                placeholder={dil === "tr" ? "Bir soru sor..." : "Ask a question..."}
+                style={{ flex: 1, padding: "12px 14px", borderRadius: 16, border: "1px solid #e5e7eb", outline: "none", fontSize: 14, boxSizing: "border-box" }}
+              />
+              <button onClick={chatGonder} disabled={chatYukleniyor} style={{ padding: "0 18px", borderRadius: 16, background: "#111", color: "#fff", border: "none", fontWeight: 700, cursor: chatYukleniyor ? "not-allowed" : "pointer" }}>
+                {dil === "tr" ? "Gönder" : "Send"}
+              </button>
+            </div>
           </div>
         </div>
       )}
