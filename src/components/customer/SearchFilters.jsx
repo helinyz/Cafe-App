@@ -1,6 +1,6 @@
 import { Search, X, Leaf } from "lucide-react";
 
-function Chip({ aktif, onClick, children }) {
+export function Chip({ aktif, onClick, children }) {
   return (
     <button
       onClick={onClick}

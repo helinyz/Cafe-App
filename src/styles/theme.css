@@ -154,3 +154,8 @@
 .flora-clamp-2 { -webkit-line-clamp: 2; }
 
 .flora-search::placeholder { color: var(--color-text-muted); }
+
+/* + butonunun "− adet +" stepper'a dönüşmesi: genişlik geçişi */
+.flora-stepper {
+  transition: width 220ms ease-out, background-color 220ms ease-out, box-shadow 220ms ease-out;
+}

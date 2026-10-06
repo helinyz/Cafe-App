@@ -3,14 +3,15 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { db } from "../firebase";
 import { collection, query, where, getDocs, addDoc, doc, serverTimestamp, onSnapshot } from "firebase/firestore";
 import {
-  Wheat, ArrowLeft, Plus, Minus,
-  Sparkles, MessageCircle, Bot, X, Send,
-  CheckCircle2, Banknote, CreditCard, ShoppingBag, Bell,
+  Leaf, Sparkles, MessageCircle, Bot, X, Send,
+  CheckCircle2, Banknote, CreditCard, Bell,
 } from "lucide-react";
 
 // Warm Organic müşteri paneli bileşenleri
 import HomeHero from "../components/customer/HomeHero";
-import SearchFilters from "../components/customer/SearchFilters";
+import SearchFilters, { Chip } from "../components/customer/SearchFilters";
+import CategoryHeader from "../components/customer/CategoryHeader";
+import ProductCard from "../components/customer/ProductCard";
 import PopularSection from "../components/customer/PopularSection";
 import CategoryGrid from "../components/customer/CategoryGrid";
 import ImageWithFallback from "../components/customer/ImageWithFallback";
@@ -311,6 +312,19 @@ export default function CustomerPage() {
   const heroGorsel = populerUrunler.find(i => i.imageUrl)?.imageUrl || menu.find(i => i.imageUrl)?.imageUrl;
   const sepetAdedi = cart.reduce((a, b) => a + b.qty, 0);
   const anaSayfa = !aktifKategori && !aramaMetni && !glutenFiltre;
+  const aktifKategoriBilgisi = kategoriListesi.find(k => k.key === aktifKategori);
+  const listelenenUrunler = menu.filter(i => {
+    const matchesCategory = aktifKategori ? i.category === aktifKategori : true;
+    const matchesSearch = aramaMetni ? (i.name.toLowerCase().includes(aramaMetni.toLowerCase()) || (i.nameEN && i.nameEN.toLowerCase().includes(aramaMetni.toLowerCase()))) : true;
+    const matchesGluten = glutenFiltre ? i.glutensiz === true : true;
+    return matchesCategory && matchesSearch && matchesGluten;
+  });
+  // Kategori görünümünde arama kutusu yok; ana sayfada yazılmış bir arama
+  // metni kategori içinde görünmez bir filtre olarak kalmasın.
+  const kategoriSec = (kat) => {
+    setAramaMetni("");
+    setAktifKategori(kat);
+  };
 
   if (loading) return <div style={{ textAlign: "center", padding: 50, fontWeight: 700 }}>{t.yukleniyor}...</div>;
 
@@ -425,95 +439,73 @@ export default function CustomerPage() {
         />
       )}
 
-      {/* HEADER (kategori görünümü) */}
-      {aktifKategori && <div style={{ padding: "16px 20px", position: "sticky", top: 0, background: "rgba(255,255,255,0.95)", backdropFilter: "blur(10px)", zIndex: 10, borderBottom: `1px solid ${theme.border}` }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div>
-            {aktifKategori && (
-              <button onClick={() => setAktifKategori(null)} style={{ background: "none", border: "none", color: theme.textPrimary, fontWeight: 700, cursor: "pointer", fontSize: 13, marginBottom: 4, display: "flex", alignItems: "center", gap: 4, padding: 0 }}>
-                <ArrowLeft size={15} strokeWidth={2.5} /> {t.geriDon}
-              </button>
-            )}
-            {!aktifKategori && <p style={{ margin: 0, fontSize: 11, color: theme.textSecondary, fontWeight: 700, letterSpacing: 0.5 }}>{t.hosgeldin?.toUpperCase()}</p>}
-            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: theme.textPrimary }}>{cafe?.name}</h1>
-          </div>
+      {/* KATEGORİ BAŞLIĞI (yapışkan, cam) */}
+      {aktifKategori && (
+        <CategoryHeader
+          baslik={getKategoriIsmi(aktifKategori)}
+          count={aktifKategoriBilgisi?.count || 0}
+          gfCount={aktifKategoriBilgisi?.gfCount || 0}
+          onGeri={() => setAktifKategori(null)}
+          cartCount={sepetAdedi}
+          onSepetAc={() => setSepetAcik(true)}
+          t={t}
+        />
+      )}
 
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ display: "flex", background: theme.bgMuted, borderRadius: 99, padding: 3 }}>
-              {["tr", "en"].map(d => (
-                <button key={d} onClick={() => dilDegistir(d)} style={{ padding: "6px 14px", borderRadius: 99, border: "none", cursor: "pointer", background: dil === d ? theme.textPrimary : "transparent", color: dil === d ? "#fff" : theme.textSecondary, fontSize: 11, fontWeight: 700 }}>
-                  {d.toUpperCase()}
-                </button>
-              ))}
-            </div>
-            <div style={{ background: theme.textPrimary, color: "#fff", padding: "8px 12px", borderRadius: theme.radiusSm, fontWeight: 700, fontSize: 12 }}>M {tableNumber}</div>
-            {cart.length > 0 && (
-              <button
-                onClick={() => setSepetAcik(true)}
-                aria-label={dil === "tr" ? "Sepeti aç" : "Open cart"}
-                style={{ position: "relative", background: theme.accent, color: "#fff", border: "none", padding: "8px 12px", borderRadius: theme.radiusSm, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
-              >
-                <ShoppingBag size={16} strokeWidth={2.2} />
-                <span style={{
-                  position: "absolute", top: -6, right: -6, minWidth: 18, height: 18, borderRadius: "50%",
-                  background: theme.textPrimary, color: "#fff", fontSize: 10, fontWeight: 700,
-                  display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px", border: `2px solid ${theme.bg}`, boxSizing: "border-box"
-                }}>
-                  {cart.reduce((a, b) => a + b.qty, 0)}
-                </span>
-              </button>
-            )}
-          </div>
+      {/* ARAMA VE FİLTRE CHIP'LERİ — ana sayfada arama + tüm chip'ler,
+          kategori içinde sadece Tümü / Glutensiz */}
+      {!aktifKategori ? (
+        <SearchFilters
+          aramaMetni={aramaMetni}
+          onAramaDegistir={setAramaMetni}
+          glutenFiltre={glutenFiltre}
+          onGlutenToggle={() => setGlutenFiltre(!glutenFiltre)}
+          aktifKategori={aktifKategori}
+          onTumu={() => { setGlutenFiltre(false); setAktifKategori(null); }}
+          kategoriler={kategoriListesi}
+          onKategoriSec={kategoriSec}
+          t={t}
+        />
+      ) : (
+        <div className="flora-scroll-row" role="group" aria-label={t.filtreler} style={{ gap: 8, padding: "16px 20px 4px" }}>
+          <Chip aktif={!glutenFiltre} onClick={() => setGlutenFiltre(false)}>{t.tumu}</Chip>
+          <Chip aktif={glutenFiltre} onClick={() => setGlutenFiltre(true)}>
+            <Leaf size={15} strokeWidth={2.2} aria-hidden="true" /> {t.glutensiz}
+          </Chip>
         </div>
-      </div>}
-
-      {/* ARAMA VE FİLTRE CHIP'LERİ */}
-      <SearchFilters
-        aramaMetni={aramaMetni}
-        onAramaDegistir={setAramaMetni}
-        glutenFiltre={glutenFiltre}
-        onGlutenToggle={() => setGlutenFiltre(!glutenFiltre)}
-        aktifKategori={aktifKategori}
-        onTumu={() => { setGlutenFiltre(false); setAktifKategori(null); }}
-        kategoriler={kategoriListesi}
-        onKategoriSec={setAktifKategori}
-        t={t}
-      />
+      )}
 
       {/* POPÜLER SEÇİMLER + KATEGORİLER */}
       {anaSayfa && (
         <>
           <PopularSection items={populerUrunler} dil={dil} t={t} cart={cart} onAdd={addToCart} />
-          <CategoryGrid kategoriler={kategoriListesi} onSec={setAktifKategori} t={t} />
+          <CategoryGrid kategoriler={kategoriListesi} onSec={kategoriSec} t={t} />
         </>
       )}
 
       {/* ÜRÜN LİSTESİ (Kategori, Arama veya Gluten Filtresi Aktifse) */}
-      {(aktifKategori || aramaMetni || glutenFiltre) && (
-        <div style={{ padding: "0 15px", display: "flex", flexDirection: "column", gap: 10 }}>
-          <h3 style={{ fontSize: 17, fontWeight: 700, color: theme.textPrimary, marginBottom: 5, marginTop: 10 }}>
-            {aramaMetni ? `${t.arama}: ${aramaMetni}` : glutenFiltre && !aktifKategori ? (dil === "tr" ? "Glutensiz Ürünler" : "Gluten-Free Items") : getKategoriIsmi(aktifKategori)}
-          </h3>
-          {menu
-            .filter(i => {
-              const matchesCategory = aktifKategori ? i.category === aktifKategori : true;
-              const matchesSearch = aramaMetni ? (i.name.toLowerCase().includes(aramaMetni.toLowerCase()) || (i.nameEN && i.nameEN.toLowerCase().includes(aramaMetni.toLowerCase()))) : true;
-              const matchesGluten = glutenFiltre ? i.glutensiz === true : true;
-              return matchesCategory && matchesSearch && matchesGluten;
-            })
-            .map(item => (
-              <UrunKarti key={item.id} item={item} cart={cart} addToCart={addToCart} removeFromCart={removeFromCart} dil={dil} theme={theme} />
-            ))}
-
-          {menu.filter(i => {
-              const matchesCategory = aktifKategori ? i.category === aktifKategori : true;
-              const matchesSearch = aramaMetni ? (i.name.toLowerCase().includes(aramaMetni.toLowerCase()) || (i.nameEN && i.nameEN.toLowerCase().includes(aramaMetni.toLowerCase()))) : true;
-              const matchesGluten = glutenFiltre ? i.glutensiz === true : true;
-              return matchesCategory && matchesSearch && matchesGluten;
-          }).length === 0 && (
-            <p style={{ textAlign: "center", color: theme.textSecondary, marginTop: 40 }}>{dil === "tr" ? "Ürün bulunamadı." : "No items found."}</p>
+      {!anaSayfa && (
+        <section style={{ padding: "16px 20px 0", display: "flex", flexDirection: "column", gap: 12 }}>
+          {!aktifKategori && (
+            <h2 style={{ margin: "4px 0 2px", fontFamily: "var(--font-serif)", fontSize: 22, fontWeight: 600, color: "var(--color-text)" }}>
+              {aramaMetni ? t.aramaSonuclari : t.glutensizUrunler}
+            </h2>
           )}
-        </div>
+          {listelenenUrunler.map(item => (
+            <ProductCard
+              key={item.id}
+              item={item}
+              adet={cart.find(c => c.id === item.id)?.qty || 0}
+              onEkle={addToCart}
+              onCikar={removeFromCart}
+              dil={dil}
+              t={t}
+            />
+          ))}
+          {listelenenUrunler.length === 0 && (
+            <p style={{ textAlign: "center", color: "var(--color-text-muted)", margin: "40px 0" }}>{t.sonucBulunamadi}</p>
+          )}
+        </section>
       )}
 
       {/* SEPET MODAL */}
@@ -650,46 +642,6 @@ function SiparisHazirBanner({ siparisHazir, onKapat, dil, theme }) {
       <button onClick={onKapat} style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", display: "flex", flexShrink: 0, opacity: 0.85 }}>
         <X size={18} strokeWidth={2} />
       </button>
-    </div>
-  );
-}
-
-function UrunKarti({ item, cart, addToCart, removeFromCart, dil, theme }) {
-  const inCart = cart.find(c => c.id === item.id);
-  const urunIsmi = dil === "en" && item.nameEN ? item.nameEN : item.name;
-  const urunAciklama = dil === "en" && item.descriptionEN ? item.descriptionEN : item.description;
-
-  return (
-    <div style={{ display: "flex", gap: 14, padding: 14, background: theme.bg, border: `1px solid ${theme.border}`, borderRadius: theme.radiusMd, alignItems: "center", boxShadow: theme.shadowSm }}>
-      <ImageWithFallback src={item.imageUrl} width={80} height={80} radius={theme.radiusSm} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 4 }}>
-          <h4 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: theme.textPrimary }}>{urunIsmi}</h4>
-          {item.glutensiz && (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, background: theme.successSoft, color: theme.success, border: `1px solid ${theme.successBorder}`, padding: "2px 6px", borderRadius: 6, fontWeight: 700, whiteSpace: "nowrap" }}>
-              <Wheat size={10} strokeWidth={2.4} /> {dil === "tr" ? "GLUTENSİZ" : "G-FREE"}
-            </span>
-          )}
-        </div>
-        <p style={{ margin: "0 0 8px", fontSize: 12, color: theme.textSecondary, lineHeight: "1.4" }}>{urunAciklama}</p>
-        <strong style={{ fontSize: 15, fontWeight: 700, color: theme.accent }}>{item.price} ₺</strong>
-      </div>
-
-      {!inCart ? (
-        <button onClick={() => addToCart(item)} style={{ background: theme.accent, color: "#fff", border: "none", width: 38, height: 38, borderRadius: theme.radiusSm, cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <Plus size={18} strokeWidth={2.5} />
-        </button>
-      ) : (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, background: theme.bgMuted, padding: "5px", borderRadius: theme.radiusSm, flexShrink: 0 }}>
-          <button onClick={() => removeFromCart(item.id)} style={{ width: 28, height: 28, borderRadius: theme.radiusSm - 4, border: "none", background: theme.bg, color: theme.textPrimary, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Minus size={14} strokeWidth={2.5} />
-          </button>
-          <span style={{ fontWeight: 700, fontSize: 14, minWidth: 16, textAlign: "center", color: theme.textPrimary }}>{inCart.qty}</span>
-          <button onClick={() => addToCart(item)} style={{ width: 28, height: 28, borderRadius: theme.radiusSm - 4, border: "none", background: theme.accent, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Plus size={14} strokeWidth={2.5} />
-          </button>
-        </div>
-      )}
     </div>
   );
 }

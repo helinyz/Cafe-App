@@ -42,5 +42,10 @@ export const tr = {
   sepeteEkle: "Sepete ekle",
   sepetiAc: "Sepeti aç",
   dilSecimi: "Dil seçimi",
-  filtreler: "Filtreler"
+  filtreler: "Filtreler",
+  // kategori / ürün listesi
+  aramaSonuclari: "Arama sonuçları",
+  glutensizUrunler: "Glutensiz ürünler",
+  sepettenCikar: "Sepetten çıkar",
+  adet: "adet"
 };

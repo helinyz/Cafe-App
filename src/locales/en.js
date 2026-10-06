@@ -42,5 +42,10 @@ export const en = {
   sepeteEkle: "Add to cart",
   sepetiAc: "Open cart",
   dilSecimi: "Language",
-  filtreler: "Filters"
+  filtreler: "Filters",
+  // category / product list
+  aramaSonuclari: "Search results",
+  glutensizUrunler: "Gluten-free items",
+  sepettenCikar: "Remove from cart",
+  adet: "qty"
 };
