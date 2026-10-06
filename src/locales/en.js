@@ -30,5 +30,17 @@ export const en = {
   hesapIste: "Request Bill 🔔",
   hesapYolda: "Staff is coming!",
   hesapYoldaAciklama: "A staff member is on their way to your table.",
-  menuyeDon: "Back to Menu"
+  menuyeDon: "Back to Menu",
+  // Warm Organic redesign — home screen
+  masa: "Table",
+  slogan: "Fresh coffee, homemade treats.",
+  tumu: "All",
+  glutensiz: "Gluten-free",
+  glutensizKisa: "gluten-free",
+  populerBaslik: "Popular",
+  populerVurgu: "picks",
+  sepeteEkle: "Add to cart",
+  sepetiAc: "Open cart",
+  dilSecimi: "Language",
+  filtreler: "Filters"
 };

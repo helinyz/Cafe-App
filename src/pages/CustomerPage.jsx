@@ -3,10 +3,17 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { db } from "../firebase";
 import { collection, query, where, getDocs, addDoc, doc, serverTimestamp, onSnapshot } from "firebase/firestore";
 import {
-  Search, Wheat, Flame, ArrowLeft, Plus, Minus, ImageOff,
+  Wheat, ArrowLeft, Plus, Minus,
   Sparkles, MessageCircle, Bot, X, Send,
   CheckCircle2, Banknote, CreditCard, ShoppingBag, Bell,
 } from "lucide-react";
+
+// Warm Organic müşteri paneli bileşenleri
+import HomeHero from "../components/customer/HomeHero";
+import SearchFilters from "../components/customer/SearchFilters";
+import PopularSection from "../components/customer/PopularSection";
+import CategoryGrid from "../components/customer/CategoryGrid";
+import ImageWithFallback from "../components/customer/ImageWithFallback";
 
 // Dil dosyaları
 import { tr } from "../locales/tr";
@@ -294,6 +301,17 @@ export default function CustomerPage() {
     }
   };
 
+  const kategoriListesi = [...new Set(menu.map(i => i.category))].map(kat => ({
+    key: kat,
+    label: getKategoriIsmi(kat),
+    count: menu.filter(i => i.category === kat && i.available !== false).length,
+    gfCount: glutensizSayisi(kat),
+    imageUrl: menu.find(i => i.category === kat && i.imageUrl)?.imageUrl
+  }));
+  const heroGorsel = populerUrunler.find(i => i.imageUrl)?.imageUrl || menu.find(i => i.imageUrl)?.imageUrl;
+  const sepetAdedi = cart.reduce((a, b) => a + b.qty, 0);
+  const anaSayfa = !aktifKategori && !aramaMetni && !glutenFiltre;
+
   if (loading) return <div style={{ textAlign: "center", padding: 50, fontWeight: 700 }}>{t.yukleniyor}...</div>;
 
   if (orderPlaced) return (
@@ -389,11 +407,26 @@ export default function CustomerPage() {
   }
 
   return (
-    <div style={{ maxWidth: 480, margin: "0 auto", background: theme.bg, minHeight: "100vh", paddingBottom: 120 }}>
+    <div className="flora-app" style={{ paddingBottom: 120 }}>
       <SiparisHazirBanner siparisHazir={siparisHazir} onKapat={() => setSiparisHazir(false)} dil={dil} theme={theme} />
 
-      {/* HEADER */}
-      <div style={{ padding: "16px 20px", position: "sticky", top: 0, background: "rgba(255,255,255,0.95)", backdropFilter: "blur(10px)", zIndex: 10, borderBottom: `1px solid ${theme.border}` }}>
+      {/* ANA SAYFA HERO — kategori görünümünde aşağıdaki başlık kullanılıyor */}
+      {!aktifKategori && (
+        <HomeHero
+          cafeName={cafe?.name}
+          tagline={cafe?.tagline || t.slogan}
+          tableNumber={tableNumber}
+          dil={dil}
+          onDilDegistir={dilDegistir}
+          heroImageUrl={heroGorsel}
+          t={t}
+          cartCount={sepetAdedi}
+          onSepetAc={() => setSepetAcik(true)}
+        />
+      )}
+
+      {/* HEADER (kategori görünümü) */}
+      {aktifKategori && <div style={{ padding: "16px 20px", position: "sticky", top: 0, background: "rgba(255,255,255,0.95)", backdropFilter: "blur(10px)", zIndex: 10, borderBottom: `1px solid ${theme.border}` }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
             {aktifKategori && (
@@ -432,90 +465,27 @@ export default function CustomerPage() {
             )}
           </div>
         </div>
-      </div>
+      </div>}
 
-      {/* ARAMA VE GLUTEN FİLTRE ÇUBUĞU */}
-      <div style={{ display: "flex", gap: 10, padding: "12px 16px" }}>
-          <div style={{ position: "relative", flex: 1 }}>
-            <Search size={17} strokeWidth={2} color={theme.textMuted} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)" }} />
-            <input
-              value={aramaMetni}
-              onChange={e => setAramaMetni(e.target.value)}
-              placeholder={t.arama}
-              style={{ width: "100%", boxSizing: "border-box", padding: "13px 14px 13px 40px", borderRadius: theme.radiusSm, border: `1px solid ${theme.border}`, outline: "none", background: theme.bgSubtle, color: theme.textPrimary, fontSize: 15 }}
-            />
-          </div>
+      {/* ARAMA VE FİLTRE CHIP'LERİ */}
+      <SearchFilters
+        aramaMetni={aramaMetni}
+        onAramaDegistir={setAramaMetni}
+        glutenFiltre={glutenFiltre}
+        onGlutenToggle={() => setGlutenFiltre(!glutenFiltre)}
+        aktifKategori={aktifKategori}
+        onTumu={() => { setGlutenFiltre(false); setAktifKategori(null); }}
+        kategoriler={kategoriListesi}
+        onKategoriSec={setAktifKategori}
+        t={t}
+      />
 
-          <button
-            onClick={() => setGlutenFiltre(!glutenFiltre)}
-            style={{
-              flexShrink: 0, padding: "0 16px", borderRadius: theme.radiusSm, border: "1.5px solid",
-              borderColor: glutenFiltre ? theme.success : theme.border,
-              background: glutenFiltre ? theme.successSoft : theme.bg,
-              cursor: "pointer", fontSize: 13, fontWeight: 700,
-              color: glutenFiltre ? theme.success : theme.textSecondary,
-              display: "flex", alignItems: "center", gap: 6, transition: "all 0.15s"
-            }}>
-            <Wheat size={15} strokeWidth={2.2} /> {dil === "tr" ? "Glutensiz" : "G-Free"}
-          </button>
-      </div>
-
-      {/* POPÜLER ÜRÜNLER */}
-      {!aktifKategori && !aramaMetni && !glutenFiltre && populerUrunler.length > 0 && (
-        <div style={{ padding: "0 16px 20px" }}>
-          <p style={{ margin: "10px 0", fontSize: 16, fontWeight: 700, color: theme.textPrimary, display: "flex", alignItems: "center", gap: 6 }}>
-            <Flame size={17} strokeWidth={2.2} color={theme.accent} /> {t.populer}
-          </p>
-          <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 10, scrollbarWidth: "none" }}>
-            {populerUrunler.map(item => (
-              <div key={item.id} onClick={() => addToCart(item)} style={{ minWidth: 140, background: theme.bg, borderRadius: theme.radiusMd, border: `1px solid ${theme.border}`, padding: 10, textAlign: "center", boxShadow: theme.shadowSm, position: "relative", cursor: "pointer" }}>
-                {item.glutensiz && (
-                  <span style={{ position: "absolute", top: 8, right: 8, width: 22, height: 22, borderRadius: "50%", background: theme.successSoft, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <Wheat size={12} strokeWidth={2.2} color={theme.success} />
-                  </span>
-                )}
-                <ImageWithFallback src={item.imageUrl} size={80} radius={theme.radiusSm - 4} theme={theme} />
-                <p style={{ margin: "8px 0 4px", fontSize: 13, fontWeight: 700, color: theme.textPrimary }}>{dil === "en" ? (item.nameEN || item.name) : item.name}</p>
-                <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: theme.accent }}>{item.price} ₺</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* KATEGORİ LİSTESİ */}
-      {!aktifKategori && !aramaMetni && !glutenFiltre && (
-        <div style={{ padding: "0 15px", display: "flex", flexDirection: "column", gap: 16 }}>
-          <p style={{ margin: "5px 0 0", fontSize: 12, fontWeight: 700, color: theme.textSecondary, letterSpacing: 0.4, textTransform: "uppercase" }}>{t.kategoriler}</p>
-          {[...new Set(menu.map(i => i.category))].map(kat => {
-            const katGorsel = menu.find(i => i.category === kat)?.imageUrl;
-            return (
-              <div key={kat} onClick={() => setAktifKategori(kat)} style={{ height: 140, borderRadius: theme.radiusLg, position: "relative", overflow: "hidden", cursor: "pointer", boxShadow: theme.shadowSm, background: theme.bgMuted }}>
-                {katGorsel ? (
-                  <img src={katGorsel} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="" />
-                ) : (
-                  <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <ImageOff size={28} strokeWidth={1.5} color={theme.textMuted} />
-                  </div>
-                )}
-                <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(33,29,24,0.85), transparent 65%)" }} />
-                <div style={{ position: "absolute", bottom: 20, left: 24, right: 24, display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
-                  <div>
-                    <h2 style={{ color: "#fff", margin: 0, fontSize: 21, fontWeight: 700 }}>{getKategoriIsmi(kat)}</h2>
-                    <p style={{ color: "rgba(255,255,255,0.85)", margin: "4px 0 0", fontSize: 12, display: "flex", alignItems: "center", gap: 8 }}>
-                      {menu.filter(i => i.category === kat && i.available !== false).length} {t.urun}
-                      {glutensizSayisi(kat) > 0 && (
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "rgba(255,255,255,0.18)", padding: "2px 8px", borderRadius: 99, fontSize: 11 }}>
-                          <Wheat size={11} strokeWidth={2.2} /> {glutensizSayisi(kat)} {dil === "tr" ? "glutensiz" : "gf"}
-                        </span>
-                      )}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+      {/* POPÜLER SEÇİMLER + KATEGORİLER */}
+      {anaSayfa && (
+        <>
+          <PopularSection items={populerUrunler} dil={dil} t={t} cart={cart} onAdd={addToCart} />
+          <CategoryGrid kategoriler={kategoriListesi} onSec={setAktifKategori} t={t} />
+        </>
       )}
 
       {/* ÜRÜN LİSTESİ (Kategori, Arama veya Gluten Filtresi Aktifse) */}
@@ -567,7 +537,7 @@ export default function CustomerPage() {
                 <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 4, scrollbarWidth: "none" }}>
                   {oneriler.map(item => (
                     <div key={item.id} onClick={() => addToCart(item)} style={{ minWidth: 116, flexShrink: 0, background: theme.bgSubtle, borderRadius: theme.radiusSm, border: `1px solid ${theme.border}`, padding: 10, textAlign: "center", cursor: "pointer" }}>
-                      <ImageWithFallback src={item.imageUrl} size={60} radius={theme.radiusSm - 4} theme={theme} />
+                      <ImageWithFallback src={item.imageUrl} width={60} height={60} radius={theme.radiusSm - 4} style={{ margin: "0 auto" }} />
                       <p style={{ margin: "6px 0 2px", fontSize: 12, fontWeight: 700, color: theme.textPrimary }}>{dil === "en" ? (item.nameEN || item.name) : item.name}</p>
                       <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: theme.accent }}>+ {item.price} ₺</p>
                     </div>
@@ -684,17 +654,6 @@ function SiparisHazirBanner({ siparisHazir, onKapat, dil, theme }) {
   );
 }
 
-function ImageWithFallback({ src, size, radius, theme }) {
-  if (!src) {
-    return (
-      <div style={{ width: size, height: size, borderRadius: radius, background: theme.bgMuted, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-        <ImageOff size={size * 0.3} strokeWidth={1.5} color={theme.textMuted} />
-      </div>
-    );
-  }
-  return <img src={src} style={{ width: size, height: size, borderRadius: radius, objectFit: "cover", flexShrink: 0 }} alt="" />;
-}
-
 function UrunKarti({ item, cart, addToCart, removeFromCart, dil, theme }) {
   const inCart = cart.find(c => c.id === item.id);
   const urunIsmi = dil === "en" && item.nameEN ? item.nameEN : item.name;
@@ -702,7 +661,7 @@ function UrunKarti({ item, cart, addToCart, removeFromCart, dil, theme }) {
 
   return (
     <div style={{ display: "flex", gap: 14, padding: 14, background: theme.bg, border: `1px solid ${theme.border}`, borderRadius: theme.radiusMd, alignItems: "center", boxShadow: theme.shadowSm }}>
-      <ImageWithFallback src={item.imageUrl} size={80} radius={theme.radiusSm} theme={theme} />
+      <ImageWithFallback src={item.imageUrl} width={80} height={80} radius={theme.radiusSm} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 4 }}>
           <h4 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: theme.textPrimary }}>{urunIsmi}</h4>

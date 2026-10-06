@@ -30,5 +30,17 @@ export const tr = {
   hesapIste: "Hesap İste 🔔",
   hesapYolda: "Hesap Yolda!",
   hesapYoldaAciklama: "Ekibimiz ödeme için masanıza yönlendirildi.",
-  menuyeDon: "Menüye Geri Dön"
+  menuyeDon: "Menüye Geri Dön",
+  // Warm Organic yeniden tasarımı — ana sayfa
+  masa: "Masa",
+  slogan: "Taze kahve, ev yapımı lezzetler.",
+  tumu: "Tümü",
+  glutensiz: "Glutensiz",
+  glutensizKisa: "glutensiz",
+  populerBaslik: "Popüler",
+  populerVurgu: "seçimler",
+  sepeteEkle: "Sepete ekle",
+  sepetiAc: "Sepeti aç",
+  dilSecimi: "Dil seçimi",
+  filtreler: "Filtreler"
 };

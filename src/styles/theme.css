@@ -30,6 +30,9 @@
   /* Kategori kartı tonları */
   --color-clay: #E6C4AB;
   --color-cream: #EBE1D2;
+  /* Tonlu kart zemininde ikincil metin — #7A6F66 clay üzerinde ~3:1 kalıyordu,
+     bu ton clay/cream üzerinde AA (≥4.5:1) sağlıyor */
+  --color-text-on-tint: #5B4A3F;
 
   /* Ödeme bilgi banner'ı */
   --color-payment-bg: #F4E3D6;
@@ -102,3 +105,52 @@
 
 /* Yatay kaydırılabilir şeritlerde scrollbar'ı gizle (App.css'teki genel
    kural zaten bunu yapıyor, burada tekrar tanımlamaya gerek yok). */
+
+/* Müşteri paneli kökü — ana zemin ve gövde yazı tipi */
+.flora-app {
+  max-width: var(--app-max-width);
+  margin: 0 auto;
+  min-height: 100vh;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+}
+.flora-app button,
+.flora-app input,
+.flora-app textarea {
+  font-family: inherit;
+}
+
+/* Dokunma geri bildirimi: kısa, etkileşimi engellemeyen bir küçülme */
+.flora-tap {
+  transition: transform 150ms ease-out, background-color 150ms ease-out, color 150ms ease-out;
+  -webkit-tap-highlight-color: transparent;
+}
+.flora-tap:active { transform: scale(0.96); }
+
+/* Klavye ile gezinirken görünür odak halkası */
+.flora-app :focus-visible {
+  outline: 2px solid var(--color-sage-deep);
+  outline-offset: 2px;
+}
+
+/* Yatay kaydırılabilir şerit (filtre chip'leri, popüler kartlar) */
+.flora-scroll-row {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  padding: 0 20px;
+  scroll-padding: 0 20px;
+}
+.flora-scroll-row > * { scroll-snap-align: start; flex-shrink: 0; }
+
+.flora-clamp-1,
+.flora-clamp-2 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.flora-clamp-1 { -webkit-line-clamp: 1; }
+.flora-clamp-2 { -webkit-line-clamp: 2; }
+
+.flora-search::placeholder { color: var(--color-text-muted); }
