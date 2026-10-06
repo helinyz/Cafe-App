@@ -50,5 +50,18 @@ export const en = {
   adet: "qty",
   // bottom action bar
   menuAsistani: "Menu Assistant",
-  urunTekil: "item"
+  urunTekil: "item",
+  // cart
+  sepetBos: "Your cart is empty",
+  sepetBosAciklama: "Add something from the menu to get started.",
+  bunuDaBegen: "You might also like",
+  siparisNotu: "Order note",
+  odemeYontemi: "Payment method",
+  kartKisa: "Card",
+  // card payment (simulated)
+  kartIleOde: "Pay by card",
+  kartNumarasi: "Card number",
+  sonKullanma: "Expiry",
+  odemeyiOnayla: "Confirm payment",
+  simulasyonNotu: "This is a simulation — no real payment is processed."
 };

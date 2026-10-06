@@ -50,5 +50,18 @@ export const tr = {
   adet: "adet",
   // alt aksiyon çubuğu
   menuAsistani: "Menü Asistanı",
-  urunTekil: "ürün"
+  urunTekil: "ürün",
+  // sepet
+  sepetBos: "Sepetin boş",
+  sepetBosAciklama: "Menüden bir şeyler ekleyerek başla.",
+  bunuDaBegen: "Bunu da beğenebilirsin",
+  siparisNotu: "Sipariş notu",
+  odemeYontemi: "Ödeme yöntemi",
+  kartKisa: "Kart",
+  // kart ödeme (simüle)
+  kartIleOde: "Kart ile öde",
+  kartNumarasi: "Kart numarası",
+  sonKullanma: "Son kullanma",
+  odemeyiOnayla: "Ödemeyi onayla",
+  simulasyonNotu: "Bu bir simülasyondur, gerçek bir ödeme işlemi yapılmaz."
 };

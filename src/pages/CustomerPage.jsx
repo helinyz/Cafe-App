@@ -3,7 +3,7 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { db } from "../firebase";
 import { collection, query, where, getDocs, addDoc, doc, serverTimestamp, onSnapshot } from "firebase/firestore";
 import {
-  Leaf, Sparkles, Bot, X, Send,
+  Leaf, Bot, X, Send,
   CheckCircle2, Banknote, CreditCard, Bell,
 } from "lucide-react";
 
@@ -13,9 +13,9 @@ import SearchFilters, { Chip } from "../components/customer/SearchFilters";
 import CategoryHeader from "../components/customer/CategoryHeader";
 import ProductCard from "../components/customer/ProductCard";
 import BottomActionBar from "../components/customer/BottomActionBar";
+import CartSheet from "../components/customer/CartSheet";
 import PopularSection from "../components/customer/PopularSection";
 import CategoryGrid from "../components/customer/CategoryGrid";
-import ImageWithFallback from "../components/customer/ImageWithFallback";
 
 // Dil dosyaları
 import { tr } from "../locales/tr";
@@ -110,6 +110,10 @@ export default function CustomerPage() {
   // KART ÖDEME (simüle) EKRANI
   const [kartOdemeAcik, setKartOdemeAcik] = useState(false);
   const [kartForm, setKartForm] = useState({ no: "", sonKullanma: "", cvv: "" });
+  // Sepette seçilen ödeme yöntemi; "Siparişi Onayla" buna göre kart ekranına
+  // ya da doğrudan nakit siparişe gidiyor. Varsayılan kart: yanlışlıkla
+  // dokunulursa sipariş hemen oluşmasın, önce kart ekranı açılsın.
+  const [odemeYontemi, setOdemeYontemi] = useState("kart");
 
   const [dil, setDil] = useState(localStorage.getItem("kafe_dil") || "tr");
   const t = dil === "tr" ? tr : en;
@@ -282,6 +286,15 @@ export default function CustomerPage() {
   const nakitIleOde = () => gonderSiparis("nakit", "beklemede");
   const kartOdemesiniOnayla = () => gonderSiparis("kart", "odendi");
 
+  const sepettenSiparisVer = () => {
+    if (odemeYontemi === "nakit") {
+      nakitIleOde();
+    } else {
+      setSepetAcik(false);
+      setKartOdemeAcik(true);
+    }
+  };
+
   const chatGonder = async () => {
     const soru = chatInput.trim();
     if (!soru || chatYukleniyor) return;
@@ -376,47 +389,55 @@ export default function CustomerPage() {
   // hiçbir yere gönderilmiyor/saklanmıyor, sadece bu ekranın kendi state'i.
   if (kartOdemeAcik) {
     const formGecerli = kartForm.no.trim() && kartForm.sonKullanma.trim() && kartForm.cvv.trim();
-    const tutar = cart.reduce((s, i) => s + (i.price * i.qty), 0);
+    const alanStili = {
+      width: "100%", height: 52, boxSizing: "border-box", padding: "0 20px",
+      borderRadius: "var(--radius-pill)", border: "1px solid var(--color-border)", background: "var(--color-surface)",
+      color: "var(--color-text)", fontSize: 15, outline: "none"
+    };
+    const etiketStili = { display: "block", margin: "0 0 6px 4px", fontSize: 13, fontWeight: 700, color: "var(--color-text)" };
     return (
-      <div style={{ maxWidth: 480, margin: "0 auto", minHeight: "100vh", background: theme.bgSubtle, padding: 24, display: "flex", alignItems: "center" }}>
-        <div style={{ width: "100%", background: theme.bg, borderRadius: theme.radiusLg, padding: 28, border: `1px solid ${theme.border}`, boxShadow: theme.shadowSm }}>
+      <div className="flora-app" style={{ padding: 20, display: "flex", alignItems: "center" }}>
+        <div style={{ width: "100%", background: "var(--color-surface)", borderRadius: "var(--radius-card)", padding: 24, border: "1px solid var(--color-border-soft)", boxShadow: "var(--shadow-soft)" }}>
           <div style={{ textAlign: "center", marginBottom: 22 }}>
-            <div style={{ width: 56, height: 56, borderRadius: "50%", background: theme.accentSoft, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px" }}>
-              <CreditCard size={26} strokeWidth={1.8} color={theme.accent} />
+            <div aria-hidden="true" style={{ width: 56, height: 56, borderRadius: "50%", background: "var(--color-sage-light)", color: "var(--color-sage-deep)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px" }}>
+              <CreditCard size={24} strokeWidth={1.9} />
             </div>
-            <h2 style={{ margin: "0 0 4px", fontSize: 18, fontWeight: 700, color: theme.textPrimary }}>{dil === "tr" ? "Kart ile Öde" : "Pay by Card"}</h2>
-            <p style={{ margin: 0, fontSize: 14, color: theme.textSecondary }}>{tutar} ₺</p>
+            <h1 style={{ margin: "0 0 4px", fontFamily: "var(--font-serif)", fontSize: 26, fontWeight: 600, color: "var(--color-text)" }}>{t.kartIleOde}</h1>
+            <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "var(--color-price)" }}>{sepetToplami} ₺</p>
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 22 }}>
-            <input
-              value={kartForm.no}
-              onChange={e => setKartForm(f => ({ ...f, no: e.target.value }))}
-              placeholder={dil === "tr" ? "Kart Numarası" : "Card Number"}
-              style={{ padding: "13px 14px", borderRadius: theme.radiusSm, border: `1px solid ${theme.border}`, outline: "none", fontSize: 15, color: theme.textPrimary, boxSizing: "border-box" }}
-            />
+          <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 22 }}>
+            <div>
+              <label htmlFor="kart-no" style={etiketStili}>{t.kartNumarasi}</label>
+              <input id="kart-no" inputMode="numeric" autoComplete="off" className="flora-input" value={kartForm.no} onChange={e => setKartForm(f => ({ ...f, no: e.target.value }))} placeholder="0000 0000 0000 0000" style={alanStili} />
+            </div>
             <div style={{ display: "flex", gap: 10 }}>
-              <input
-                value={kartForm.sonKullanma}
-                onChange={e => setKartForm(f => ({ ...f, sonKullanma: e.target.value }))}
-                placeholder="AA/YY"
-                style={{ flex: 1, padding: "13px 14px", borderRadius: theme.radiusSm, border: `1px solid ${theme.border}`, outline: "none", fontSize: 15, color: theme.textPrimary, boxSizing: "border-box" }}
-              />
-              <input
-                value={kartForm.cvv}
-                onChange={e => setKartForm(f => ({ ...f, cvv: e.target.value }))}
-                placeholder="CVV"
-                style={{ flex: 1, padding: "13px 14px", borderRadius: theme.radiusSm, border: `1px solid ${theme.border}`, outline: "none", fontSize: 15, color: theme.textPrimary, boxSizing: "border-box" }}
-              />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <label htmlFor="kart-skt" style={etiketStili}>{t.sonKullanma}</label>
+                <input id="kart-skt" inputMode="numeric" autoComplete="off" className="flora-input" value={kartForm.sonKullanma} onChange={e => setKartForm(f => ({ ...f, sonKullanma: e.target.value }))} placeholder={dil === "tr" ? "AA/YY" : "MM/YY"} style={alanStili} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <label htmlFor="kart-cvv" style={etiketStili}>CVV</label>
+                <input id="kart-cvv" inputMode="numeric" autoComplete="off" className="flora-input" value={kartForm.cvv} onChange={e => setKartForm(f => ({ ...f, cvv: e.target.value }))} placeholder="123" style={alanStili} />
+              </div>
             </div>
           </div>
 
-          <button onClick={kartOdemesiniOnayla} disabled={!formGecerli} style={{ width: "100%", padding: 16, borderRadius: theme.radiusMd, background: formGecerli ? theme.accent : theme.bgMuted, color: formGecerli ? "#fff" : theme.textMuted, border: "none", fontWeight: 700, fontSize: 15, cursor: formGecerli ? "pointer" : "not-allowed" }}>
-            {dil === "tr" ? "Ödemeyi Onayla" : "Confirm Payment"}
+          <button
+            onClick={kartOdemesiniOnayla}
+            disabled={!formGecerli}
+            className="flora-tap"
+            style={{
+              width: "100%", minHeight: 56, borderRadius: "var(--radius-pill)", border: "none", fontSize: 16, fontWeight: 700,
+              background: formGecerli ? "var(--color-terracotta)" : "var(--color-surface-alt)",
+              color: formGecerli ? "#fff" : "var(--color-text-muted)",
+              boxShadow: formGecerli ? "var(--shadow-cta)" : "none",
+              cursor: formGecerli ? "pointer" : "not-allowed"
+            }}
+          >
+            {t.odemeyiOnayla} · {sepetToplami} ₺
           </button>
-          <p style={{ marginTop: 14, fontSize: 11, color: theme.textMuted, textAlign: "center" }}>
-            {dil === "tr" ? "Bu bir simülasyondur, gerçek bir ödeme işlemi yapılmaz." : "This is a simulation — no real payment is processed."}
-          </p>
+          <p style={{ margin: "14px 0 0", fontSize: 12, color: "var(--color-text-muted)", textAlign: "center" }}>{t.simulasyonNotu}</p>
         </div>
       </div>
     );
@@ -508,51 +529,25 @@ export default function CustomerPage() {
         </section>
       )}
 
-      {/* SEPET MODAL */}
+      {/* SEPET */}
       {sepetAcik && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(33,29,24,0.55)", zIndex: 200, display: "flex", alignItems: "flex-end" }} onClick={() => setSepetAcik(false)}>
-          <div style={{ background: theme.bg, width: "100%", borderTopLeftRadius: theme.radiusLg, borderTopRightRadius: theme.radiusLg, padding: "30px 25px 40px", maxHeight: "80vh", overflowY: "auto" }} onClick={e => e.stopPropagation()}>
-            <div style={{ width: 40, height: 4, background: theme.border, borderRadius: 2, margin: "-10px auto 20px" }}></div>
-            <h2 style={{ marginBottom: 22, fontWeight: 700, fontSize: 22, color: theme.textPrimary }}>{t.sepetim}</h2>
-            {cart.map(i => (
-              <div key={i.id} style={{ display: "flex", justifyContent: "space-between", marginBottom: 14, alignItems: "center" }}>
-                <div style={{ fontWeight: 500, color: theme.textPrimary, fontSize: 14 }}>{i.qty}x {dil === "en" ? (i.nameEN || i.name) : i.name}</div>
-                <div style={{ fontWeight: 700, color: theme.textPrimary, fontSize: 14 }}>{i.price * i.qty} ₺</div>
-              </div>
-            ))}
-
-            {oneriler.length > 0 && (
-              <div style={{ marginTop: 12, marginBottom: 20, paddingTop: 16, borderTop: `1px solid ${theme.border}` }}>
-                <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 700, color: theme.textSecondary, display: "flex", alignItems: "center", gap: 6 }}>
-                  <Sparkles size={14} strokeWidth={2.2} color={theme.accent} /> {dil === "tr" ? "Bunu da beğenebilirsin" : "You might also like"}
-                </p>
-                <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 4, scrollbarWidth: "none" }}>
-                  {oneriler.map(item => (
-                    <div key={item.id} onClick={() => addToCart(item)} style={{ minWidth: 116, flexShrink: 0, background: theme.bgSubtle, borderRadius: theme.radiusSm, border: `1px solid ${theme.border}`, padding: 10, textAlign: "center", cursor: "pointer" }}>
-                      <ImageWithFallback src={item.imageUrl} width={60} height={60} radius={theme.radiusSm - 4} style={{ margin: "0 auto" }} />
-                      <p style={{ margin: "6px 0 2px", fontSize: 12, fontWeight: 700, color: theme.textPrimary }}>{dil === "en" ? (item.nameEN || item.name) : item.name}</p>
-                      <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: theme.accent }}>+ {item.price} ₺</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <textarea placeholder={t.notEkle} value={siparisnotu} onChange={e => setSiparisNotu(e.target.value)} style={{ width: "100%", padding: 14, borderRadius: theme.radiusSm, margin: "20px 0", background: theme.bgMuted, color: theme.textPrimary, border: "none", outline: "none", fontSize: 14, boxSizing: "border-box" }} />
-
-            <p style={{ margin: "0 0 10px", fontSize: 12, fontWeight: 700, color: theme.textSecondary, textTransform: "uppercase", letterSpacing: 0.3 }}>
-              {dil === "tr" ? "Ödeme Yöntemi" : "Payment Method"}
-            </p>
-            <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={() => { setSepetAcik(false); setKartOdemeAcik(true); }} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "16px 8px", borderRadius: theme.radiusMd, background: theme.accent, border: "none", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
-                <CreditCard size={20} strokeWidth={1.8} /> {dil === "tr" ? "Kart ile Öde" : "Pay by Card"}
-              </button>
-              <button onClick={nakitIleOde} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "16px 8px", borderRadius: theme.radiusMd, background: theme.accent, border: "none", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
-                <Banknote size={20} strokeWidth={1.8} /> {dil === "tr" ? "Nakit ile Öde" : "Pay by Cash"}
-              </button>
-            </div>
-          </div>
-        </div>
+        <CartSheet
+          cart={cart}
+          oneriler={oneriler}
+          dil={dil}
+          t={t}
+          tableNumber={tableNumber}
+          sepetAdedi={sepetAdedi}
+          toplam={sepetToplami}
+          not={siparisnotu}
+          onNotDegistir={setSiparisNotu}
+          odemeYontemi={odemeYontemi}
+          onOdemeYontemi={setOdemeYontemi}
+          onEkle={addToCart}
+          onCikar={removeFromCart}
+          onKapat={() => setSepetAcik(false)}
+          onOnayla={sepettenSiparisVer}
+        />
       )}
 
       {/* ALT AKSİYON ÇUBUĞU — bir sheet açıkken gizli */}
