@@ -1,4 +1,4 @@
-import { MapPin, Coffee, ShoppingBag } from "lucide-react";
+import { MapPin, Coffee } from "lucide-react";
 import Blob from "./Blob";
 import ImageWithFallback from "./ImageWithFallback";
 
@@ -11,7 +11,7 @@ function VurguluBaslik({ text = "" }) {
   return <>{kelimeler.join(" ")} <em style={{ fontStyle: "italic", fontWeight: 400 }}>{son}</em></>;
 }
 
-export default function HomeHero({ cafeName, tagline, tableNumber, dil, onDilDegistir, heroImageUrl, t, cartCount, onSepetAc }) {
+export default function HomeHero({ cafeName, tagline, tableNumber, dil, onDilDegistir, heroImageUrl, t }) {
   return (
     <header style={{
       position: "relative", background: "var(--color-sage-light)",
@@ -50,28 +50,6 @@ export default function HomeHero({ cafeName, tagline, tableNumber, dil, onDilDeg
             ))}
           </div>
 
-          {cartCount > 0 && (
-            <button
-              onClick={onSepetAc}
-              aria-label={`${t.sepetiAc} (${cartCount})`}
-              className="flora-tap flora-pop-in"
-              style={{
-                position: "relative", width: 44, height: 44, borderRadius: "50%", border: "none", cursor: "pointer",
-                background: "var(--color-terracotta)", color: "#fff", boxShadow: "var(--shadow-cta)",
-                display: "flex", alignItems: "center", justifyContent: "center"
-              }}
-            >
-              <ShoppingBag size={19} strokeWidth={2.1} />
-              <span style={{
-                position: "absolute", top: -3, right: -3, minWidth: 20, height: 20, padding: "0 5px", boxSizing: "border-box",
-                borderRadius: "var(--radius-pill)", background: "var(--color-text)", color: "#fff",
-                border: "2px solid var(--color-sage-light)", fontSize: 10, fontWeight: 700,
-                display: "flex", alignItems: "center", justifyContent: "center"
-              }}>
-                {cartCount}
-              </span>
-            </button>
-          )}
         </div>
       </div>
 

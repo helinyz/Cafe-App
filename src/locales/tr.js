@@ -47,5 +47,8 @@ export const tr = {
   aramaSonuclari: "Arama sonuçları",
   glutensizUrunler: "Glutensiz ürünler",
   sepettenCikar: "Sepetten çıkar",
-  adet: "adet"
+  adet: "adet",
+  // alt aksiyon çubuğu
+  menuAsistani: "Menü Asistanı",
+  urunTekil: "ürün"
 };

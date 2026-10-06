@@ -3,7 +3,7 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { db } from "../firebase";
 import { collection, query, where, getDocs, addDoc, doc, serverTimestamp, onSnapshot } from "firebase/firestore";
 import {
-  Leaf, Sparkles, MessageCircle, Bot, X, Send,
+  Leaf, Sparkles, Bot, X, Send,
   CheckCircle2, Banknote, CreditCard, Bell,
 } from "lucide-react";
 
@@ -12,6 +12,7 @@ import HomeHero from "../components/customer/HomeHero";
 import SearchFilters, { Chip } from "../components/customer/SearchFilters";
 import CategoryHeader from "../components/customer/CategoryHeader";
 import ProductCard from "../components/customer/ProductCard";
+import BottomActionBar from "../components/customer/BottomActionBar";
 import PopularSection from "../components/customer/PopularSection";
 import CategoryGrid from "../components/customer/CategoryGrid";
 import ImageWithFallback from "../components/customer/ImageWithFallback";
@@ -311,6 +312,7 @@ export default function CustomerPage() {
   }));
   const heroGorsel = populerUrunler.find(i => i.imageUrl)?.imageUrl || menu.find(i => i.imageUrl)?.imageUrl;
   const sepetAdedi = cart.reduce((a, b) => a + b.qty, 0);
+  const sepetToplami = cart.reduce((s, i) => s + (i.price * i.qty), 0);
   const anaSayfa = !aktifKategori && !aramaMetni && !glutenFiltre;
   const aktifKategoriBilgisi = kategoriListesi.find(k => k.key === aktifKategori);
   const listelenenUrunler = menu.filter(i => {
@@ -421,7 +423,7 @@ export default function CustomerPage() {
   }
 
   return (
-    <div className="flora-app" style={{ paddingBottom: 120 }}>
+    <div className="flora-app" style={{ paddingBottom: "calc(112px + env(safe-area-inset-bottom, 0px))" }}>
       <SiparisHazirBanner siparisHazir={siparisHazir} onKapat={() => setSiparisHazir(false)} dil={dil} theme={theme} />
 
       {/* ANA SAYFA HERO — kategori görünümünde aşağıdaki başlık kullanılıyor */}
@@ -434,8 +436,6 @@ export default function CustomerPage() {
           onDilDegistir={dilDegistir}
           heroImageUrl={heroGorsel}
           t={t}
-          cartCount={sepetAdedi}
-          onSepetAc={() => setSepetAcik(true)}
         />
       )}
 
@@ -555,15 +555,15 @@ export default function CustomerPage() {
         </div>
       )}
 
-      {/* MENÜ ASİSTANI - AÇMA BUTONU */}
-      {!chatAcik && (
-        <button
-          onClick={() => setChatAcik(true)}
-          style={{ position: "fixed", bottom: 25, right: 20, width: 52, height: 52, borderRadius: "50%", background: theme.textPrimary, color: "#fff", border: "none", cursor: "pointer", boxShadow: theme.shadowLg, zIndex: 150, display: "flex", alignItems: "center", justifyContent: "center" }}
-          aria-label={dil === "tr" ? "Menü asistanı" : "Menu assistant"}
-        >
-          <MessageCircle size={22} strokeWidth={2} />
-        </button>
+      {/* ALT AKSİYON ÇUBUĞU — bir sheet açıkken gizli */}
+      {!sepetAcik && !chatAcik && (
+        <BottomActionBar
+          cartCount={sepetAdedi}
+          cartTotal={sepetToplami}
+          onAsistanAc={() => setChatAcik(true)}
+          onSepetAc={() => setSepetAcik(true)}
+          t={t}
+        />
       )}
 
       {/* MENÜ ASİSTANI PANELİ */}

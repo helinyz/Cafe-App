@@ -47,5 +47,8 @@ export const en = {
   aramaSonuclari: "Search results",
   glutensizUrunler: "Gluten-free items",
   sepettenCikar: "Remove from cart",
-  adet: "qty"
+  adet: "qty",
+  // bottom action bar
+  menuAsistani: "Menu Assistant",
+  urunTekil: "item"
 };
