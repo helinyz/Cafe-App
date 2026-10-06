@@ -1,7 +1,12 @@
 import { useState, useEffect } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { db } from "../firebase";
-import { collection, query, where, getDocs, addDoc, serverTimestamp, onSnapshot } from "firebase/firestore";
+import { collection, query, where, getDocs, addDoc, doc, serverTimestamp, onSnapshot } from "firebase/firestore";
+import {
+  Search, Wheat, Flame, ArrowLeft, Plus, Minus, ImageOff,
+  Sparkles, MessageCircle, Bot, X, Send,
+  CheckCircle2, Banknote, CreditCard, ShoppingBag, Bell,
+} from "lucide-react";
 
 // Dil dosyaları
 import { tr } from "../locales/tr";
@@ -13,6 +18,51 @@ import { kuyruğaEkle, kuyruğuBoşalt } from "../utils/offlineQueue";
 // "localhost" yerine 127.0.0.1: bkz. OwnerPage.jsx, bu makinede 8000 portunu
 // Docker da IPv6'da dinliyor ve "localhost" yanlış servise çözülebiliyor.
 const RECS_API_URL = import.meta.env.VITE_RECS_API_URL || "http://127.0.0.1:8000";
+
+// Müşteri paneli tasarım sistemi: tek bir sıcak nötr palet + tek vurgu rengi
+// (terracotta). Bkz. proje planı — bilinçli olarak sıcak/kahve dükkanı
+// hissi verecek şekilde seçildi, soğuk mavi-gri tonlar yerine.
+const theme = {
+  bg: "#FFFFFF",
+  bgSubtle: "#FAFAF9",
+  bgMuted: "#F1EFEC",
+  border: "#E5E2DD",
+  textPrimary: "#211D18",
+  textSecondary: "#8A8578",
+  textMuted: "#B5AFA4",
+  accent: "#B5622A",
+  accentSoft: "#F5E6DB",
+  accentText: "#8C4A1F",
+  success: "#3F7A4C",
+  successSoft: "#EAF3EC",
+  successBorder: "#CFE3D5",
+  radiusSm: 10,
+  radiusMd: 18,
+  radiusLg: 28,
+  shadowSm: "0 2px 10px rgba(33,29,24,0.06)",
+  shadowLg: "0 10px 24px rgba(33,29,24,0.14)",
+};
+
+// Sipariş hazır bildirimi için kısa bir "bip" sesi — dosya eklemeden
+// Web Audio API ile üretiliyor. Tarayıcı ses politikaları nedeniyle
+// başarısız olabilir (örn. hiç kullanıcı etkileşimi olmadan), bu yüzden
+// sessizce yutuluyor — ses olmasa da görsel banner zaten gösteriliyor.
+function playBildirimSesi() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.4);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.4);
+  } catch {
+    // ses çalınamadı, sorun değil
+  }
+}
 
 export default function CustomerPage() {
   const { cafeSlug } = useParams();
@@ -41,8 +91,16 @@ export default function CustomerPage() {
   const [glutenFiltre, setGlutenFiltre] = useState(false);
 
   const [orderPlaced, setOrderPlaced] = useState(false);
-  const [hesapIstendi, setHesapIstendi] = useState(false);
-  const [odemeYontemi, setOdemeYontemi] = useState(null);
+  const [sonSiparis, setSonSiparis] = useState(null); // { totalPrice, paymentMethod } - sonuç ekranında gösterilecek
+
+  // SİPARİŞ HAZIR BİLDİRİMİ — sayfa açık kaldığı sürece son verilen siparişin
+  // durumunu dinler, barista "completed" işaretleyince banner+ses gösterir.
+  const [sonSiparisId, setSonSiparisId] = useState(null);
+  const [siparisHazir, setSiparisHazir] = useState(false);
+
+  // KART ÖDEME (simüle) EKRANI
+  const [kartOdemeAcik, setKartOdemeAcik] = useState(false);
+  const [kartForm, setKartForm] = useState({ no: "", sonKullanma: "", cvv: "" });
 
   const [dil, setDil] = useState(localStorage.getItem("kafe_dil") || "tr");
   const t = dil === "tr" ? tr : en;
@@ -51,6 +109,12 @@ export default function CustomerPage() {
     setDil(yeniDil);
     localStorage.setItem("kafe_dil", yeniDil);
   };
+
+  // Büyük harf "İ/I" Türkçe'de dile bağlı davranır (örn. CSS text-transform);
+  // <html lang> aktif dile göre güncellenmeli.
+  useEffect(() => {
+    document.documentElement.lang = dil;
+  }, [dil]);
 
   useEffect(() => {
     const fetchCafe = async () => {
@@ -120,6 +184,17 @@ export default function CustomerPage() {
     return () => window.removeEventListener("online", flushOnReconnect);
   }, [cafeId]);
 
+  useEffect(() => {
+    if (!cafeId || !sonSiparisId) return;
+    const unsub = onSnapshot(doc(db, "cafes", cafeId, "orders", sonSiparisId), (snap) => {
+      if (snap.data()?.status === "completed") {
+        setSiparisHazir(true);
+        playBildirimSesi();
+      }
+    });
+    return unsub;
+  }, [cafeId, sonSiparisId]);
+
   // YARDIMCI FONKSİYONLAR
   const getKategoriIsmi = (kat) => {
     if (dil === "tr") return kat;
@@ -146,8 +221,12 @@ export default function CustomerPage() {
     });
   };
 
-  const placeOrder = async () => {
+  // paymentMethod: "kart" | "nakit", paymentStatus: "odendi" | "beklemede"
+  // Kart -> ödeme (simüle) ekranında onaylandığı an "odendi"; nakit -> teslimde
+  // tahsil edileceği için "beklemede" olarak siparişle birlikte oluşturulur.
+  const gonderSiparis = async (paymentMethod, paymentStatus) => {
     if (cart.length === 0) return;
+    const totalPrice = cart.reduce((s, i) => s + (i.price * i.qty), 0);
     const siparisVerisi = {
       tableNumber,
       items: cart.map(i => ({
@@ -155,50 +234,44 @@ export default function CustomerPage() {
         qty: i.qty,
         price: i.price
       })),
-      totalPrice: cart.reduce((s, i) => s + (i.price * i.qty), 0),
+      totalPrice,
       status: "pending",
-      not: siparisnotu.trim() || null
+      not: siparisnotu.trim() || null,
+      paymentMethod,
+      paymentStatus
+    };
+
+    const tamamla = (orderId) => {
+      setSonSiparis({ totalPrice, paymentMethod });
+      setSonSiparisId(orderId || null);
+      setSiparisHazir(false);
+      setCart([]);
+      setSiparisNotu("");
+      setSepetAcik(false);
+      setKartOdemeAcik(false);
+      setOrderPlaced(true);
     };
 
     if (!navigator.onLine) {
       kuyruğaEkle(siparisVerisi);
-      setCart([]);
-      setSepetAcik(false);
-      setOrderPlaced(true);
+      tamamla(null); // çevrimdışı kuyruğa eklenen sipariş henüz Firestore'da yok, bildirim takip edilemez
       return;
     }
 
     try {
-      await addDoc(collection(db, "cafes", cafeId, "orders"), {
+      const docRef = await addDoc(collection(db, "cafes", cafeId, "orders"), {
         ...siparisVerisi,
         createdAt: serverTimestamp()
       });
-      setCart([]);
-      setSepetAcik(false);
-      setOrderPlaced(true);
+      tamamla(docRef.id);
     } catch {
       kuyruğaEkle(siparisVerisi);
-      setCart([]);
-      setSepetAcik(false);
-      setOrderPlaced(true);
+      tamamla(null);
     }
   };
 
-  const hesapIste = async () => {
-    if (!odemeYontemi) return;
-    try {
-      await addDoc(collection(db, "cafes", cafeId, "orders"), {
-        tableNumber,
-        status: "hesap",
-        createdAt: serverTimestamp(),
-        items: [],
-        totalPrice: 0,
-        tip: "hesap_istegi",
-        odemeYontemi
-      });
-      setHesapIstendi(true);
-    } catch (err) { alert("Hesap hatası!"); }
-  };
+  const nakitIleOde = () => gonderSiparis("nakit", "beklemede");
+  const kartOdemesiniOnayla = () => gonderSiparis("kart", "odendi");
 
   const chatGonder = async () => {
     const soru = chatInput.trim();
@@ -224,65 +297,139 @@ export default function CustomerPage() {
   if (loading) return <div style={{ textAlign: "center", padding: 50, fontWeight: 700 }}>{t.yukleniyor}...</div>;
 
   if (orderPlaced) return (
-    <div style={{ maxWidth: 480, margin: "0 auto", padding: 24, minHeight: "100vh", background: "#f9f9f9", fontFamily: "-apple-system, sans-serif" }}>
-      <div style={{ background: "#fff", borderRadius: 24, padding: 30, textAlign: "center", border: "1px solid #f0f0f0", boxShadow: "0 4px 12px rgba(0,0,0,0.05)", marginBottom: 20 }}>
-        <div style={{ fontSize: 64, marginBottom: 16 }}>✅</div>
-        <h2 style={{ margin: "0 0 8px", fontSize: 22, fontWeight: 800 }}>{t.siparisAlindi}</h2>
-        <p style={{ color: "#6b7280", margin: 0, fontSize: 15 }}>{t.siparisAlindiAciklama}</p>
-      </div>
-
-      <div style={{ background: "#fff", borderRadius: 24, padding: 24, border: "1px solid #f0f0f0", boxShadow: "0 4px 12px rgba(0,0,0,0.05)" }}>
-        <p style={{ margin: "0 0 6px", fontSize: 18, fontWeight: 800, color: "#111" }}>{t.hesapBaslik}</p>
-        <p style={{ margin: "0 0 20px", fontSize: 14, color: "#6b7280" }}>{t.hesapAciklama}</p>
-
-        <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
-          {[{ id: "nakit", label: t.nakit, emoji: "💵" }, { id: "kart", label: t.kart, emoji: "💳" }].map(yontem => (
-            <button key={yontem.id} onClick={() => setOdemeYontemi(yontem.id)} style={{ flex: 1, padding: "16px 8px", borderRadius: 16, cursor: "pointer", border: odemeYontemi === yontem.id ? "2px solid #111" : "2px solid #f0f0f0", background: odemeYontemi === yontem.id ? "#111" : "#fff", color: odemeYontemi === yontem.id ? "#fff" : "#4b5563", fontWeight: 700, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-              <span style={{ fontSize: 28 }}>{yontem.emoji}</span> {yontem.label}
-            </button>
-          ))}
+    <div style={{ maxWidth: 480, margin: "0 auto", padding: 24, minHeight: "100vh", background: theme.bgSubtle }}>
+      <SiparisHazirBanner siparisHazir={siparisHazir} onKapat={() => setSiparisHazir(false)} dil={dil} theme={theme} />
+      <div style={{ background: theme.bg, borderRadius: theme.radiusLg, padding: 30, textAlign: "center", border: `1px solid ${theme.border}`, boxShadow: theme.shadowSm, marginBottom: 20 }}>
+        <div style={{ width: 64, height: 64, borderRadius: "50%", background: theme.successSoft, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+          <CheckCircle2 size={32} strokeWidth={2} color={theme.success} />
         </div>
-
-        {!hesapIstendi ? (
-          <button onClick={hesapIste} disabled={!odemeYontemi} style={{ width: "100%", padding: 18, borderRadius: 18, background: odemeYontemi ? "#111" : "#e5e7eb", color: "#fff", border: "none", fontSize: 16, fontWeight: 800, cursor: odemeYontemi ? "pointer" : "not-allowed" }}>
-            {t.hesapIste}
-          </button>
-        ) : (
-          <div style={{ textAlign: "center", padding: 15, background: "#f0fdf4", borderRadius: 16 }}>
-            <div style={{ fontSize: 40, marginBottom: 8 }}>🔔</div>
-            <p style={{ margin: 0, fontWeight: 800, color: "#166534" }}>{t.hesapYolda}</p>
-            <p style={{ margin: 0, fontSize: 13, color: "#16a34a" }}>{t.hesapYoldaAciklama}</p>
-          </div>
-        )}
-        
-        <button onClick={() => setOrderPlaced(false)} style={{ width: "100%", marginTop: 15, background: "none", border: "none", color: "#6b7280", fontWeight: 600, fontSize: 14 }}>
-          {t.menuyeDon || "Menüye Geri Dön"}
-        </button>
+        <h2 style={{ margin: "0 0 8px", fontSize: 21, fontWeight: 700, color: theme.textPrimary }}>{t.siparisAlindi}</h2>
+        <p style={{ color: theme.textSecondary, margin: 0, fontSize: 15 }}>{t.siparisAlindiAciklama}</p>
       </div>
+
+      {sonSiparis?.paymentMethod === "kart" && (
+        <div style={{ background: theme.successSoft, borderRadius: theme.radiusLg, padding: 20, display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ width: 40, height: 40, borderRadius: "50%", background: theme.bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <CreditCard size={19} strokeWidth={2} color={theme.success} />
+          </div>
+          <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: theme.success }}>
+            {dil === "tr" ? "Ödemeniz alındı, siparişiniz hazırlanıyor." : "Payment received, your order is being prepared."}
+          </p>
+        </div>
+      )}
+
+      {sonSiparis?.paymentMethod === "nakit" && (
+        <div style={{ background: theme.accentSoft, borderRadius: theme.radiusLg, padding: 20, display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ width: 40, height: 40, borderRadius: "50%", background: theme.bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <Banknote size={19} strokeWidth={2} color={theme.accentText} />
+          </div>
+          <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: theme.accentText }}>
+            {dil === "tr"
+              ? `Siparişiniz alındı, hazır olduğunda ${sonSiparis.totalPrice} ₺ nakit ödemesi ile teslim alacaksınız.`
+              : `Your order is received — you'll pay ${sonSiparis.totalPrice} ₺ in cash when it's delivered.`}
+          </p>
+        </div>
+      )}
+
+      <button onClick={() => setOrderPlaced(false)} style={{ width: "100%", marginTop: 20, background: "none", border: "none", color: theme.textSecondary, fontWeight: 600, fontSize: 14, cursor: "pointer" }}>
+        {t.menuyeDon || "Menüye Geri Dön"}
+      </button>
     </div>
   );
 
+  // KART ÖDEME (SİMÜLE) EKRANI — bilinçli olarak SADECE form + tek buton
+  // içeriyor, başka hiçbir aksiyon yok (geri/iptal dahil). Kart bilgileri
+  // hiçbir yere gönderilmiyor/saklanmıyor, sadece bu ekranın kendi state'i.
+  if (kartOdemeAcik) {
+    const formGecerli = kartForm.no.trim() && kartForm.sonKullanma.trim() && kartForm.cvv.trim();
+    const tutar = cart.reduce((s, i) => s + (i.price * i.qty), 0);
+    return (
+      <div style={{ maxWidth: 480, margin: "0 auto", minHeight: "100vh", background: theme.bgSubtle, padding: 24, display: "flex", alignItems: "center" }}>
+        <div style={{ width: "100%", background: theme.bg, borderRadius: theme.radiusLg, padding: 28, border: `1px solid ${theme.border}`, boxShadow: theme.shadowSm }}>
+          <div style={{ textAlign: "center", marginBottom: 22 }}>
+            <div style={{ width: 56, height: 56, borderRadius: "50%", background: theme.accentSoft, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px" }}>
+              <CreditCard size={26} strokeWidth={1.8} color={theme.accent} />
+            </div>
+            <h2 style={{ margin: "0 0 4px", fontSize: 18, fontWeight: 700, color: theme.textPrimary }}>{dil === "tr" ? "Kart ile Öde" : "Pay by Card"}</h2>
+            <p style={{ margin: 0, fontSize: 14, color: theme.textSecondary }}>{tutar} ₺</p>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 22 }}>
+            <input
+              value={kartForm.no}
+              onChange={e => setKartForm(f => ({ ...f, no: e.target.value }))}
+              placeholder={dil === "tr" ? "Kart Numarası" : "Card Number"}
+              style={{ padding: "13px 14px", borderRadius: theme.radiusSm, border: `1px solid ${theme.border}`, outline: "none", fontSize: 15, color: theme.textPrimary, boxSizing: "border-box" }}
+            />
+            <div style={{ display: "flex", gap: 10 }}>
+              <input
+                value={kartForm.sonKullanma}
+                onChange={e => setKartForm(f => ({ ...f, sonKullanma: e.target.value }))}
+                placeholder="AA/YY"
+                style={{ flex: 1, padding: "13px 14px", borderRadius: theme.radiusSm, border: `1px solid ${theme.border}`, outline: "none", fontSize: 15, color: theme.textPrimary, boxSizing: "border-box" }}
+              />
+              <input
+                value={kartForm.cvv}
+                onChange={e => setKartForm(f => ({ ...f, cvv: e.target.value }))}
+                placeholder="CVV"
+                style={{ flex: 1, padding: "13px 14px", borderRadius: theme.radiusSm, border: `1px solid ${theme.border}`, outline: "none", fontSize: 15, color: theme.textPrimary, boxSizing: "border-box" }}
+              />
+            </div>
+          </div>
+
+          <button onClick={kartOdemesiniOnayla} disabled={!formGecerli} style={{ width: "100%", padding: 16, borderRadius: theme.radiusMd, background: formGecerli ? theme.accent : theme.bgMuted, color: formGecerli ? "#fff" : theme.textMuted, border: "none", fontWeight: 700, fontSize: 15, cursor: formGecerli ? "pointer" : "not-allowed" }}>
+            {dil === "tr" ? "Ödemeyi Onayla" : "Confirm Payment"}
+          </button>
+          <p style={{ marginTop: 14, fontSize: 11, color: theme.textMuted, textAlign: "center" }}>
+            {dil === "tr" ? "Bu bir simülasyondur, gerçek bir ödeme işlemi yapılmaz." : "This is a simulation — no real payment is processed."}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div style={{ maxWidth: 480, margin: "0 auto", background: "#fff", minHeight: "100vh", paddingBottom: 120, fontFamily: "-apple-system, sans-serif" }}>
-      
+    <div style={{ maxWidth: 480, margin: "0 auto", background: theme.bg, minHeight: "100vh", paddingBottom: 120 }}>
+      <SiparisHazirBanner siparisHazir={siparisHazir} onKapat={() => setSiparisHazir(false)} dil={dil} theme={theme} />
+
       {/* HEADER */}
-      <div style={{ padding: "16px 20px", position: "sticky", top: 0, background: "rgba(255,255,255,0.95)", backdropFilter: "blur(10px)", zIndex: 10, borderBottom: "1px solid #f2f2f2" }}>
+      <div style={{ padding: "16px 20px", position: "sticky", top: 0, background: "rgba(255,255,255,0.95)", backdropFilter: "blur(10px)", zIndex: 10, borderBottom: `1px solid ${theme.border}` }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
-            {aktifKategori && <button onClick={() => setAktifKategori(null)} style={{ background: "none", border: "none", fontWeight: 700, cursor: "pointer", fontSize: 13, marginBottom: 4, display: "block" }}>← {t.geriDon}</button>}
-            {!aktifKategori && <p style={{ margin: 0, fontSize: 10, color: "#9ca3af", fontWeight: 800, letterSpacing: 0.5 }}>{t.hosgeldin?.toUpperCase()}</p>}
-            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 900 }}>{cafe?.name}</h1>
+            {aktifKategori && (
+              <button onClick={() => setAktifKategori(null)} style={{ background: "none", border: "none", color: theme.textPrimary, fontWeight: 700, cursor: "pointer", fontSize: 13, marginBottom: 4, display: "flex", alignItems: "center", gap: 4, padding: 0 }}>
+                <ArrowLeft size={15} strokeWidth={2.5} /> {t.geriDon}
+              </button>
+            )}
+            {!aktifKategori && <p style={{ margin: 0, fontSize: 11, color: theme.textSecondary, fontWeight: 700, letterSpacing: 0.5 }}>{t.hosgeldin?.toUpperCase()}</p>}
+            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: theme.textPrimary }}>{cafe?.name}</h1>
           </div>
-          
+
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ display: "flex", background: "#f3f4f6", borderRadius: 99, padding: 3 }}>
+            <div style={{ display: "flex", background: theme.bgMuted, borderRadius: 99, padding: 3 }}>
               {["tr", "en"].map(d => (
-                <button key={d} onClick={() => dilDegistir(d)} style={{ padding: "6px 14px", borderRadius: 99, border: "none", cursor: "pointer", background: dil === d ? "#111" : "transparent", color: dil === d ? "#fff" : "#666", fontSize: 10, fontWeight: 800 }}>
+                <button key={d} onClick={() => dilDegistir(d)} style={{ padding: "6px 14px", borderRadius: 99, border: "none", cursor: "pointer", background: dil === d ? theme.textPrimary : "transparent", color: dil === d ? "#fff" : theme.textSecondary, fontSize: 11, fontWeight: 700 }}>
                   {d.toUpperCase()}
                 </button>
               ))}
             </div>
-            <div style={{ background: "#111", color: "#fff", padding: "8px 12px", borderRadius: 12, fontWeight: 800, fontSize: 12 }}>M {tableNumber}</div>
+            <div style={{ background: theme.textPrimary, color: "#fff", padding: "8px 12px", borderRadius: theme.radiusSm, fontWeight: 700, fontSize: 12 }}>M {tableNumber}</div>
+            {cart.length > 0 && (
+              <button
+                onClick={() => setSepetAcik(true)}
+                aria-label={dil === "tr" ? "Sepeti aç" : "Open cart"}
+                style={{ position: "relative", background: theme.accent, color: "#fff", border: "none", padding: "8px 12px", borderRadius: theme.radiusSm, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+              >
+                <ShoppingBag size={16} strokeWidth={2.2} />
+                <span style={{
+                  position: "absolute", top: -6, right: -6, minWidth: 18, height: 18, borderRadius: "50%",
+                  background: theme.textPrimary, color: "#fff", fontSize: 10, fontWeight: 700,
+                  display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px", border: `2px solid ${theme.bg}`, boxSizing: "border-box"
+                }}>
+                  {cart.reduce((a, b) => a + b.qty, 0)}
+                </span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -290,40 +437,46 @@ export default function CustomerPage() {
       {/* ARAMA VE GLUTEN FİLTRE ÇUBUĞU */}
       <div style={{ display: "flex", gap: 10, padding: "12px 16px" }}>
           <div style={{ position: "relative", flex: 1 }}>
-            <span style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", fontSize: 16 }}>🔍</span>
-            <input 
-              value={aramaMetni} 
-              onChange={e => setAramaMetni(e.target.value)} 
-              placeholder={t.arama} 
-              style={{ width: "100%", boxSizing: "border-box", padding: "14px 14px 14px 40px", borderRadius: 16, border: "1px solid #f0f0f0", outline: "none", background: "#f9fafb", fontSize: 15 }} 
+            <Search size={17} strokeWidth={2} color={theme.textMuted} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)" }} />
+            <input
+              value={aramaMetni}
+              onChange={e => setAramaMetni(e.target.value)}
+              placeholder={t.arama}
+              style={{ width: "100%", boxSizing: "border-box", padding: "13px 14px 13px 40px", borderRadius: theme.radiusSm, border: `1px solid ${theme.border}`, outline: "none", background: theme.bgSubtle, color: theme.textPrimary, fontSize: 15 }}
             />
           </div>
-          
+
           <button
             onClick={() => setGlutenFiltre(!glutenFiltre)}
             style={{
-              flexShrink: 0, padding: "0 16px", borderRadius: 16, border: "2px solid",
-              borderColor: glutenFiltre ? "#16a34a" : "#f0f0f0",
-              background: glutenFiltre ? "#f0fdf4" : "#fff",
-              cursor: "pointer", fontSize: 13, fontWeight: 800,
-              color: glutenFiltre ? "#15803d" : "#888",
-              display: "flex", alignItems: "center", gap: 6, transition: "all 0.2s"
+              flexShrink: 0, padding: "0 16px", borderRadius: theme.radiusSm, border: "1.5px solid",
+              borderColor: glutenFiltre ? theme.success : theme.border,
+              background: glutenFiltre ? theme.successSoft : theme.bg,
+              cursor: "pointer", fontSize: 13, fontWeight: 700,
+              color: glutenFiltre ? theme.success : theme.textSecondary,
+              display: "flex", alignItems: "center", gap: 6, transition: "all 0.15s"
             }}>
-            🌾 {dil === "tr" ? "Glutensiz" : "G-Free"}
+            <Wheat size={15} strokeWidth={2.2} /> {dil === "tr" ? "Glutensiz" : "G-Free"}
           </button>
       </div>
 
       {/* POPÜLER ÜRÜNLER */}
       {!aktifKategori && !aramaMetni && !glutenFiltre && populerUrunler.length > 0 && (
         <div style={{ padding: "0 16px 20px" }}>
-          <p style={{ margin: "10px 0", fontSize: 17, fontWeight: 800 }}>🔥 {t.populer}</p>
+          <p style={{ margin: "10px 0", fontSize: 16, fontWeight: 700, color: theme.textPrimary, display: "flex", alignItems: "center", gap: 6 }}>
+            <Flame size={17} strokeWidth={2.2} color={theme.accent} /> {t.populer}
+          </p>
           <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 10, scrollbarWidth: "none" }}>
             {populerUrunler.map(item => (
-              <div key={item.id} onClick={() => addToCart(item)} style={{ minWidth: 140, background: "#fff", borderRadius: 20, border: "1px solid #f3f4f6", padding: 10, textAlign: "center", boxShadow: "0 4px 12px rgba(0,0,0,0.03)", position: "relative" }}>
-                {item.glutensiz && <span style={{ position: "absolute", top: 8, right: 8, fontSize: 14 }}>🌾</span>}
-                <img src={item.imageUrl} style={{ width: 80, height: 80, borderRadius: 15, objectFit: "cover", marginBottom: 8 }} alt="" />
-                <p style={{ margin: "0 0 4px", fontSize: 13, fontWeight: 700 }}>{dil === "en" ? (item.nameEN || item.name) : item.name}</p>
-                <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: "#111" }}>{item.price} ₺</p>
+              <div key={item.id} onClick={() => addToCart(item)} style={{ minWidth: 140, background: theme.bg, borderRadius: theme.radiusMd, border: `1px solid ${theme.border}`, padding: 10, textAlign: "center", boxShadow: theme.shadowSm, position: "relative", cursor: "pointer" }}>
+                {item.glutensiz && (
+                  <span style={{ position: "absolute", top: 8, right: 8, width: 22, height: 22, borderRadius: "50%", background: theme.successSoft, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <Wheat size={12} strokeWidth={2.2} color={theme.success} />
+                  </span>
+                )}
+                <ImageWithFallback src={item.imageUrl} size={80} radius={theme.radiusSm - 4} theme={theme} />
+                <p style={{ margin: "8px 0 4px", fontSize: 13, fontWeight: 700, color: theme.textPrimary }}>{dil === "en" ? (item.nameEN || item.name) : item.name}</p>
+                <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: theme.accent }}>{item.price} ₺</p>
               </div>
             ))}
           </div>
@@ -333,33 +486,42 @@ export default function CustomerPage() {
       {/* KATEGORİ LİSTESİ */}
       {!aktifKategori && !aramaMetni && !glutenFiltre && (
         <div style={{ padding: "0 15px", display: "flex", flexDirection: "column", gap: 16 }}>
-          <p style={{ margin: "5px 0 0", fontSize: 17, fontWeight: 800 }}>📁 {t.kategoriler}</p>
-          {[...new Set(menu.map(i => i.category))].map(kat => (
-            <div key={kat} onClick={() => setAktifKategori(kat)} style={{ height: 140, borderRadius: 28, position: "relative", overflow: "hidden", cursor: "pointer", boxShadow: "0 4px 15px rgba(0,0,0,0.05)" }}>
-              <img src={menu.find(i => i.category === kat)?.imageUrl} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="" />
-              <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(0,0,0,0.8), transparent 70%)" }} />
-              <div style={{ position: "absolute", bottom: 20, left: 24, right: 24, display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
-                <div>
-                  <h2 style={{ color: "#fff", margin: 0, fontSize: 22, fontWeight: 800 }}>{getKategoriIsmi(kat)}</h2>
-                  <p style={{ color: "rgba(255,255,255,0.8)", margin: "4px 0 0", fontSize: 12 }}>
-                    {menu.filter(i => i.category === kat && i.available !== false).length} {t.urun}
-                    {glutensizSayisi(kat) > 0 && (
-                      <span style={{ marginLeft: 8, background: "rgba(255,255,255,0.2)", padding: "2px 8px", borderRadius: 99, fontSize: 11 }}>
-                        🌾 {glutensizSayisi(kat)} {dil === "tr" ? "glutensiz" : "gf"}
-                      </span>
-                    )}
-                  </p>
+          <p style={{ margin: "5px 0 0", fontSize: 12, fontWeight: 700, color: theme.textSecondary, letterSpacing: 0.4, textTransform: "uppercase" }}>{t.kategoriler}</p>
+          {[...new Set(menu.map(i => i.category))].map(kat => {
+            const katGorsel = menu.find(i => i.category === kat)?.imageUrl;
+            return (
+              <div key={kat} onClick={() => setAktifKategori(kat)} style={{ height: 140, borderRadius: theme.radiusLg, position: "relative", overflow: "hidden", cursor: "pointer", boxShadow: theme.shadowSm, background: theme.bgMuted }}>
+                {katGorsel ? (
+                  <img src={katGorsel} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="" />
+                ) : (
+                  <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <ImageOff size={28} strokeWidth={1.5} color={theme.textMuted} />
+                  </div>
+                )}
+                <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(33,29,24,0.85), transparent 65%)" }} />
+                <div style={{ position: "absolute", bottom: 20, left: 24, right: 24, display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+                  <div>
+                    <h2 style={{ color: "#fff", margin: 0, fontSize: 21, fontWeight: 700 }}>{getKategoriIsmi(kat)}</h2>
+                    <p style={{ color: "rgba(255,255,255,0.85)", margin: "4px 0 0", fontSize: 12, display: "flex", alignItems: "center", gap: 8 }}>
+                      {menu.filter(i => i.category === kat && i.available !== false).length} {t.urun}
+                      {glutensizSayisi(kat) > 0 && (
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "rgba(255,255,255,0.18)", padding: "2px 8px", borderRadius: 99, fontSize: 11 }}>
+                          <Wheat size={11} strokeWidth={2.2} /> {glutensizSayisi(kat)} {dil === "tr" ? "glutensiz" : "gf"}
+                        </span>
+                      )}
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
       {/* ÜRÜN LİSTESİ (Kategori, Arama veya Gluten Filtresi Aktifse) */}
       {(aktifKategori || aramaMetni || glutenFiltre) && (
-        <div style={{ padding: "0 15px", display: "flex", flexDirection: "column", gap: 12 }}>
-          <h3 style={{ fontSize: 18, fontWeight: 900, marginBottom: 5, marginTop: 10 }}>
+        <div style={{ padding: "0 15px", display: "flex", flexDirection: "column", gap: 10 }}>
+          <h3 style={{ fontSize: 17, fontWeight: 700, color: theme.textPrimary, marginBottom: 5, marginTop: 10 }}>
             {aramaMetni ? `${t.arama}: ${aramaMetni}` : glutenFiltre && !aktifKategori ? (dil === "tr" ? "Glutensiz Ürünler" : "Gluten-Free Items") : getKategoriIsmi(aktifKategori)}
           </h3>
           {menu
@@ -370,69 +532,63 @@ export default function CustomerPage() {
               return matchesCategory && matchesSearch && matchesGluten;
             })
             .map(item => (
-              <UrunKarti key={item.id} item={item} cart={cart} addToCart={addToCart} removeFromCart={removeFromCart} dil={dil} />
+              <UrunKarti key={item.id} item={item} cart={cart} addToCart={addToCart} removeFromCart={removeFromCart} dil={dil} theme={theme} />
             ))}
-            
+
           {menu.filter(i => {
               const matchesCategory = aktifKategori ? i.category === aktifKategori : true;
               const matchesSearch = aramaMetni ? (i.name.toLowerCase().includes(aramaMetni.toLowerCase()) || (i.nameEN && i.nameEN.toLowerCase().includes(aramaMetni.toLowerCase()))) : true;
               const matchesGluten = glutenFiltre ? i.glutensiz === true : true;
               return matchesCategory && matchesSearch && matchesGluten;
           }).length === 0 && (
-            <p style={{ textAlign: "center", color: "#9ca3af", marginTop: 40 }}>{dil === "tr" ? "Ürün bulunamadı." : "No items found."}</p>
+            <p style={{ textAlign: "center", color: theme.textSecondary, marginTop: 40 }}>{dil === "tr" ? "Ürün bulunamadı." : "No items found."}</p>
           )}
         </div>
       )}
 
-      {/* ALT BAR (HESAP VE SEPET) */}
-      <div style={{ position: "fixed", bottom: 25, left: 20, right: 20, display: "flex", gap: 12, zIndex: 100 }}>
-        <button 
-          onClick={() => setOrderPlaced(true)} 
-          style={{ flex: 1, padding: "18px", borderRadius: 22, background: "#fff", border: "2px solid #111", fontWeight: 800, fontSize: 14, cursor: "pointer", boxShadow: "0 8px 20px rgba(0,0,0,0.1)" }}
-        >
-          {t.hesap || "Hesap"}
-        </button>
-        
-        {cart.length > 0 && (
-          <button onClick={() => setSepetAcik(true)} style={{ flex: 2, padding: "18px", borderRadius: 22, background: "#111", color: "#fff", fontWeight: 800, display: "flex", justifyContent: "space-between", fontSize: 14, cursor: "pointer", boxShadow: "0 8px 20px rgba(0,0,0,0.2)" }}>
-            <span>{cart.reduce((a, b) => a + b.qty, 0)} {t.urun}</span>
-            <span>{cart.reduce((a, b) => a + (b.price * b.qty), 0)} ₺</span>
-          </button>
-        )}
-      </div>
-
       {/* SEPET MODAL */}
       {sepetAcik && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 200, display: "flex", alignItems: "flex-end" }} onClick={() => setSepetAcik(false)}>
-          <div style={{ background: "#fff", width: "100%", borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: "30px 25px 40px", maxHeight: "80vh", overflowY: "auto" }} onClick={e => e.stopPropagation()}>
-            <div style={{ width: 40, height: 4, background: "#e5e7eb", borderRadius: 2, margin: "-10px auto 20px" }}></div>
-            <h2 style={{ marginBottom: 25, fontWeight: 900, fontSize: 24 }}>{t.sepetim}</h2>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(33,29,24,0.55)", zIndex: 200, display: "flex", alignItems: "flex-end" }} onClick={() => setSepetAcik(false)}>
+          <div style={{ background: theme.bg, width: "100%", borderTopLeftRadius: theme.radiusLg, borderTopRightRadius: theme.radiusLg, padding: "30px 25px 40px", maxHeight: "80vh", overflowY: "auto" }} onClick={e => e.stopPropagation()}>
+            <div style={{ width: 40, height: 4, background: theme.border, borderRadius: 2, margin: "-10px auto 20px" }}></div>
+            <h2 style={{ marginBottom: 22, fontWeight: 700, fontSize: 22, color: theme.textPrimary }}>{t.sepetim}</h2>
             {cart.map(i => (
-              <div key={i.id} style={{ display: "flex", justifyContent: "space-between", marginBottom: 15, alignItems: "center" }}>
-                <div style={{ fontWeight: 600 }}>{i.qty}x {dil === "en" ? (i.nameEN || i.name) : i.name}</div>
-                <div style={{ fontWeight: 800 }}>{i.price * i.qty} ₺</div>
+              <div key={i.id} style={{ display: "flex", justifyContent: "space-between", marginBottom: 14, alignItems: "center" }}>
+                <div style={{ fontWeight: 500, color: theme.textPrimary, fontSize: 14 }}>{i.qty}x {dil === "en" ? (i.nameEN || i.name) : i.name}</div>
+                <div style={{ fontWeight: 700, color: theme.textPrimary, fontSize: 14 }}>{i.price * i.qty} ₺</div>
               </div>
             ))}
 
             {oneriler.length > 0 && (
-              <div style={{ marginTop: 10, marginBottom: 20 }}>
-                <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 800, color: "#6b7280" }}>
-                  {dil === "tr" ? "✨ Bunu da beğenebilirsin" : "✨ You might also like"}
+              <div style={{ marginTop: 12, marginBottom: 20, paddingTop: 16, borderTop: `1px solid ${theme.border}` }}>
+                <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 700, color: theme.textSecondary, display: "flex", alignItems: "center", gap: 6 }}>
+                  <Sparkles size={14} strokeWidth={2.2} color={theme.accent} /> {dil === "tr" ? "Bunu da beğenebilirsin" : "You might also like"}
                 </p>
                 <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 4, scrollbarWidth: "none" }}>
                   {oneriler.map(item => (
-                    <div key={item.id} onClick={() => addToCart(item)} style={{ minWidth: 120, flexShrink: 0, background: "#f9fafb", borderRadius: 16, border: "1px solid #f3f4f6", padding: 10, textAlign: "center", cursor: "pointer" }}>
-                      <img src={item.imageUrl} style={{ width: 60, height: 60, borderRadius: 12, objectFit: "cover", marginBottom: 6 }} alt="" />
-                      <p style={{ margin: "0 0 2px", fontSize: 12, fontWeight: 700 }}>{dil === "en" ? (item.nameEN || item.name) : item.name}</p>
-                      <p style={{ margin: 0, fontSize: 12, fontWeight: 800, color: "#111" }}>+ {item.price} ₺</p>
+                    <div key={item.id} onClick={() => addToCart(item)} style={{ minWidth: 116, flexShrink: 0, background: theme.bgSubtle, borderRadius: theme.radiusSm, border: `1px solid ${theme.border}`, padding: 10, textAlign: "center", cursor: "pointer" }}>
+                      <ImageWithFallback src={item.imageUrl} size={60} radius={theme.radiusSm - 4} theme={theme} />
+                      <p style={{ margin: "6px 0 2px", fontSize: 12, fontWeight: 700, color: theme.textPrimary }}>{dil === "en" ? (item.nameEN || item.name) : item.name}</p>
+                      <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: theme.accent }}>+ {item.price} ₺</p>
                     </div>
                   ))}
                 </div>
               </div>
             )}
 
-            <textarea placeholder={t.notEkle} value={siparisnotu} onChange={e => setSiparisNotu(e.target.value)} style={{ width: "100%", padding: 15, borderRadius: 18, margin: "20px 0", background: "#f3f4f6", border: "none", outline: "none", fontSize: 14, boxSizing: "border-box" }} />
-            <button onClick={placeOrder} style={{ width: "100%", background: "#111", color: "#fff", padding: "20px", borderRadius: 22, fontWeight: 800, fontSize: 16, cursor: "pointer" }}>{t.siparisOnayla}</button>
+            <textarea placeholder={t.notEkle} value={siparisnotu} onChange={e => setSiparisNotu(e.target.value)} style={{ width: "100%", padding: 14, borderRadius: theme.radiusSm, margin: "20px 0", background: theme.bgMuted, color: theme.textPrimary, border: "none", outline: "none", fontSize: 14, boxSizing: "border-box" }} />
+
+            <p style={{ margin: "0 0 10px", fontSize: 12, fontWeight: 700, color: theme.textSecondary, textTransform: "uppercase", letterSpacing: 0.3 }}>
+              {dil === "tr" ? "Ödeme Yöntemi" : "Payment Method"}
+            </p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => { setSepetAcik(false); setKartOdemeAcik(true); }} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "16px 8px", borderRadius: theme.radiusMd, background: theme.accent, border: "none", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+                <CreditCard size={20} strokeWidth={1.8} /> {dil === "tr" ? "Kart ile Öde" : "Pay by Card"}
+              </button>
+              <button onClick={nakitIleOde} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "16px 8px", borderRadius: theme.radiusMd, background: theme.accent, border: "none", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+                <Banknote size={20} strokeWidth={1.8} /> {dil === "tr" ? "Nakit ile Öde" : "Pay by Cash"}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -441,35 +597,39 @@ export default function CustomerPage() {
       {!chatAcik && (
         <button
           onClick={() => setChatAcik(true)}
-          style={{ position: "fixed", bottom: 95, right: 20, width: 54, height: 54, borderRadius: "50%", background: "#111", color: "#fff", border: "none", fontSize: 22, cursor: "pointer", boxShadow: "0 8px 20px rgba(0,0,0,0.25)", zIndex: 150 }}
+          style={{ position: "fixed", bottom: 25, right: 20, width: 52, height: 52, borderRadius: "50%", background: theme.textPrimary, color: "#fff", border: "none", cursor: "pointer", boxShadow: theme.shadowLg, zIndex: 150, display: "flex", alignItems: "center", justifyContent: "center" }}
           aria-label={dil === "tr" ? "Menü asistanı" : "Menu assistant"}
         >
-          💬
+          <MessageCircle size={22} strokeWidth={2} />
         </button>
       )}
 
       {/* MENÜ ASİSTANI PANELİ */}
       {chatAcik && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 300, display: "flex", alignItems: "flex-end" }} onClick={() => setChatAcik(false)}>
-          <div style={{ background: "#fff", width: "100%", borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: "20px 20px 24px", maxHeight: "75vh", display: "flex", flexDirection: "column" }} onClick={e => e.stopPropagation()}>
-            <div style={{ width: 40, height: 4, background: "#e5e7eb", borderRadius: 2, margin: "-10px auto 14px" }}></div>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(33,29,24,0.55)", zIndex: 300, display: "flex", alignItems: "flex-end" }} onClick={() => setChatAcik(false)}>
+          <div style={{ background: theme.bg, width: "100%", borderTopLeftRadius: theme.radiusLg, borderTopRightRadius: theme.radiusLg, padding: "20px 20px 24px", maxHeight: "75vh", display: "flex", flexDirection: "column" }} onClick={e => e.stopPropagation()}>
+            <div style={{ width: 40, height: 4, background: theme.border, borderRadius: 2, margin: "-10px auto 14px" }}></div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <h2 style={{ margin: 0, fontWeight: 900, fontSize: 18 }}>{dil === "tr" ? "🤖 Menü Asistanı" : "🤖 Menu Assistant"}</h2>
-              <button onClick={() => setChatAcik(false)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#9ca3af" }}>✕</button>
+              <h2 style={{ margin: 0, fontWeight: 700, fontSize: 17, color: theme.textPrimary, display: "flex", alignItems: "center", gap: 7 }}>
+                <Bot size={18} strokeWidth={2} color={theme.accent} /> {dil === "tr" ? "Menü Asistanı" : "Menu Assistant"}
+              </h2>
+              <button onClick={() => setChatAcik(false)} style={{ background: "none", border: "none", cursor: "pointer", color: theme.textMuted, display: "flex" }}>
+                <X size={20} strokeWidth={2} />
+              </button>
             </div>
 
             <div style={{ flex: 1, overflowY: "auto", marginBottom: 12, minHeight: 120 }}>
               {chatMesajlar.length === 0 && (
-                <p style={{ color: "#9ca3af", fontSize: 13, textAlign: "center", marginTop: 20 }}>
+                <p style={{ color: theme.textSecondary, fontSize: 13, textAlign: "center", marginTop: 20 }}>
                   {dil === "tr" ? "Menü, fiyat veya glutensiz seçenekler hakkında soru sorabilirsin." : "Ask about the menu, prices, or gluten-free options."}
                 </p>
               )}
               {chatMesajlar.map((m, idx) => (
                 <div key={idx} style={{ display: "flex", justifyContent: m.rol === "kullanici" ? "flex-end" : "flex-start", marginBottom: 8 }}>
                   <div style={{
-                    maxWidth: "80%", padding: "10px 14px", borderRadius: 16, fontSize: 14,
-                    background: m.rol === "kullanici" ? "#111" : "#f3f4f6",
-                    color: m.rol === "kullanici" ? "#fff" : "#111"
+                    maxWidth: "80%", padding: "10px 14px", borderRadius: theme.radiusSm, fontSize: 14,
+                    background: m.rol === "kullanici" ? theme.textPrimary : theme.bgMuted,
+                    color: m.rol === "kullanici" ? "#fff" : theme.textPrimary
                   }}>
                     {m.metin}
                   </div>
@@ -477,7 +637,7 @@ export default function CustomerPage() {
               ))}
               {chatYukleniyor && (
                 <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 8 }}>
-                  <div style={{ padding: "10px 14px", borderRadius: 16, fontSize: 14, background: "#f3f4f6", color: "#9ca3af" }}>
+                  <div style={{ padding: "10px 14px", borderRadius: theme.radiusSm, fontSize: 14, background: theme.bgMuted, color: theme.textSecondary }}>
                     {dil === "tr" ? "yazıyor..." : "typing..."}
                   </div>
                 </div>
@@ -490,10 +650,10 @@ export default function CustomerPage() {
                 onChange={e => setChatInput(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && chatGonder()}
                 placeholder={dil === "tr" ? "Bir soru sor..." : "Ask a question..."}
-                style={{ flex: 1, padding: "12px 14px", borderRadius: 16, border: "1px solid #e5e7eb", outline: "none", fontSize: 14, boxSizing: "border-box" }}
+                style={{ flex: 1, padding: "12px 14px", borderRadius: theme.radiusSm, border: `1px solid ${theme.border}`, outline: "none", fontSize: 14, boxSizing: "border-box", color: theme.textPrimary }}
               />
-              <button onClick={chatGonder} disabled={chatYukleniyor} style={{ padding: "0 18px", borderRadius: 16, background: "#111", color: "#fff", border: "none", fontWeight: 700, cursor: chatYukleniyor ? "not-allowed" : "pointer" }}>
-                {dil === "tr" ? "Gönder" : "Send"}
+              <button onClick={chatGonder} disabled={chatYukleniyor} style={{ width: 44, borderRadius: theme.radiusSm, background: theme.accent, color: "#fff", border: "none", cursor: chatYukleniyor ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", opacity: chatYukleniyor ? 0.6 : 1 }}>
+                <Send size={17} strokeWidth={2.2} />
               </button>
             </div>
           </div>
@@ -503,34 +663,72 @@ export default function CustomerPage() {
   );
 }
 
-function UrunKarti({ item, cart, addToCart, removeFromCart, dil }) {
+function SiparisHazirBanner({ siparisHazir, onKapat, dil, theme }) {
+  if (!siparisHazir) return null;
+  return (
+    <div style={{
+      position: "fixed", top: 0, left: 0, right: 0, zIndex: 500,
+      background: theme.accent, color: "#fff", padding: "14px 20px",
+      display: "flex", alignItems: "center", gap: 10, boxShadow: theme.shadowLg
+    }}>
+      <div style={{ width: 32, height: 32, borderRadius: "50%", background: "rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        <Bell size={16} strokeWidth={2.2} />
+      </div>
+      <p style={{ margin: 0, fontSize: 14, fontWeight: 700, flex: 1 }}>
+        {dil === "tr" ? "☕ Siparişiniz hazır!" : "☕ Your order is ready!"}
+      </p>
+      <button onClick={onKapat} style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", display: "flex", flexShrink: 0, opacity: 0.85 }}>
+        <X size={18} strokeWidth={2} />
+      </button>
+    </div>
+  );
+}
+
+function ImageWithFallback({ src, size, radius, theme }) {
+  if (!src) {
+    return (
+      <div style={{ width: size, height: size, borderRadius: radius, background: theme.bgMuted, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        <ImageOff size={size * 0.3} strokeWidth={1.5} color={theme.textMuted} />
+      </div>
+    );
+  }
+  return <img src={src} style={{ width: size, height: size, borderRadius: radius, objectFit: "cover", flexShrink: 0 }} alt="" />;
+}
+
+function UrunKarti({ item, cart, addToCart, removeFromCart, dil, theme }) {
   const inCart = cart.find(c => c.id === item.id);
   const urunIsmi = dil === "en" && item.nameEN ? item.nameEN : item.name;
   const urunAciklama = dil === "en" && item.descriptionEN ? item.descriptionEN : item.description;
 
   return (
-    <div style={{ display: "flex", gap: 15, padding: 14, background: "#fff", border: "1px solid #f3f4f6", borderRadius: 24, alignItems: "center", boxShadow: "0 2px 8px rgba(0,0,0,0.02)" }}>
-      <img src={item.imageUrl} style={{ width: 85, height: 85, borderRadius: 18, objectFit: "cover" }} alt="" />
-      <div style={{ flex: 1 }}>
+    <div style={{ display: "flex", gap: 14, padding: 14, background: theme.bg, border: `1px solid ${theme.border}`, borderRadius: theme.radiusMd, alignItems: "center", boxShadow: theme.shadowSm }}>
+      <ImageWithFallback src={item.imageUrl} size={80} radius={theme.radiusSm} theme={theme} />
+      <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 4 }}>
-          <h4 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>{urunIsmi}</h4>
+          <h4 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: theme.textPrimary }}>{urunIsmi}</h4>
           {item.glutensiz && (
-            <span style={{ fontSize: 9, background: "#f0fdf4", color: "#15803d", border: "1px solid #bbf7d0", padding: "1px 6px", borderRadius: 6, fontWeight: 800, whiteSpace: "nowrap" }}>
-              🌾 {dil === "tr" ? "GLUTENSİZ" : "G-FREE"}
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, background: theme.successSoft, color: theme.success, border: `1px solid ${theme.successBorder}`, padding: "2px 6px", borderRadius: 6, fontWeight: 700, whiteSpace: "nowrap" }}>
+              <Wheat size={10} strokeWidth={2.4} /> {dil === "tr" ? "GLUTENSİZ" : "G-FREE"}
             </span>
           )}
         </div>
-        <p style={{ margin: "0 0 8px", fontSize: 12, color: "#9ca3af", lineHeight: "1.4" }}>{urunAciklama}</p>
-        <strong style={{ fontSize: 16, fontWeight: 800 }}>{item.price} ₺</strong>
+        <p style={{ margin: "0 0 8px", fontSize: 12, color: theme.textSecondary, lineHeight: "1.4" }}>{urunAciklama}</p>
+        <strong style={{ fontSize: 15, fontWeight: 700, color: theme.accent }}>{item.price} ₺</strong>
       </div>
-      
+
       {!inCart ? (
-        <button onClick={() => addToCart(item)} style={{ background: "#111", color: "#fff", border: "none", width: 40, height: 40, borderRadius: 14, cursor: "pointer", fontSize: 20, fontWeight: 700 }}>+</button>
+        <button onClick={() => addToCart(item)} style={{ background: theme.accent, color: "#fff", border: "none", width: 38, height: 38, borderRadius: theme.radiusSm, cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <Plus size={18} strokeWidth={2.5} />
+        </button>
       ) : (
-        <div style={{ display: "flex", alignItems: "center", gap: 10, background: "#f3f4f6", padding: "5px", borderRadius: 14 }}>
-          <button onClick={() => removeFromCart(item.id)} style={{ width: 30, height: 30, borderRadius: 10, border: "none", background: "#fff", fontWeight: 700, cursor: "pointer" }}>-</button>
-          <span style={{ fontWeight: 800, fontSize: 14, minWidth: 20, textAlign: "center" }}>{inCart.qty}</span>
-          <button onClick={() => addToCart(item)} style={{ width: 30, height: 30, borderRadius: 10, border: "none", background: "#111", color: "#fff", fontWeight: 700, cursor: "pointer" }}>+</button>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, background: theme.bgMuted, padding: "5px", borderRadius: theme.radiusSm, flexShrink: 0 }}>
+          <button onClick={() => removeFromCart(item.id)} style={{ width: 28, height: 28, borderRadius: theme.radiusSm - 4, border: "none", background: theme.bg, color: theme.textPrimary, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Minus size={14} strokeWidth={2.5} />
+          </button>
+          <span style={{ fontWeight: 700, fontSize: 14, minWidth: 16, textAlign: "center", color: theme.textPrimary }}>{inCart.qty}</span>
+          <button onClick={() => addToCart(item)} style={{ width: 28, height: 28, borderRadius: theme.radiusSm - 4, border: "none", background: theme.accent, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Plus size={14} strokeWidth={2.5} />
+          </button>
         </div>
       )}
     </div>

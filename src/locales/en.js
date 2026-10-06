@@ -1,7 +1,7 @@
 export const en = {
   hosgeldin: "Welcome",
   arama: "Search products...",
-  populer: "🔥 Popular Items",
+  populer: "Popular Items",
   enCokSiparis: "Most ordered items",
   kategoriler: "Categories",
   urunleriIncele: "Explore →",
@@ -13,7 +13,7 @@ export const en = {
   toplam: "Total",
   siparisAlindi: "Order received!",
   siparisAlindiAciklama: "Your order is sent to the kitchen, enjoy!",
-  geriDon: "← Back",
+  geriDon: "Back",
   sonucBulunamadi: "No results found",
   garsonCagir: "Waiter",
   hesap: "Bill 🧾",

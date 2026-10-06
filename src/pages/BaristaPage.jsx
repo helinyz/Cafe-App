@@ -37,8 +37,8 @@ export default function BaristaPage() {
     if (!user) return;
     const ordersRef = collection(db, "cafes", CAFE_ID, "orders");
     
-    // Aktif ve Hesap İstekleri Dinleyicisi
-    const activeQuery = query(ordersRef, orderBy("createdAt", "asc"));
+    // Aktif ve Hesap İstekleri Dinleyicisi — yeni siparişler en üstte görünsün
+    const activeQuery = query(ordersRef, orderBy("createdAt", "desc"));
     const unsubscribeActive = onSnapshot(activeQuery, (snapshot) => {
       const tumVeriler = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       
@@ -63,9 +63,9 @@ export default function BaristaPage() {
     };
   }, [user]);
 
-  const updateOrderStatus = async (orderId, newStatus) => {
+  const updateOrderStatus = async (orderId, newStatus, extraFields = {}) => {
     try {
-      await updateDoc(doc(db, "cafes", CAFE_ID, "orders", orderId), { status: newStatus });
+      await updateDoc(doc(db, "cafes", CAFE_ID, "orders", orderId), { status: newStatus, ...extraFields });
     } catch (err) {
       console.error("Hata:", err);
     }
@@ -186,6 +186,16 @@ export default function BaristaPage() {
 
 function SiparisKarti({ order, updateOrderStatus, getTimeAgo, isCompleted, deleteOrder }) {
   const isPreparing = order.status === "preparing";
+  const nakitBekliyor = order.paymentStatus === "beklemede";
+  const [nakitOnaylandi, setNakitOnaylandi] = useState(false);
+
+  const teslimEt = () => {
+    if (nakitBekliyor) {
+      updateOrderStatus(order.id, "completed", { paymentStatus: "odendi" });
+    } else {
+      updateOrderStatus(order.id, "completed");
+    }
+  };
 
   return (
     <div style={{
@@ -194,21 +204,34 @@ function SiparisKarti({ order, updateOrderStatus, getTimeAgo, isCompleted, delet
       background: isCompleted ? "#fafafa" : (isPreparing ? "#eff6ff" : "#fffbeb"),
       padding: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
     }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
         <div>
           <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>Masa {order.tableNumber}</h3>
           <span style={{ fontSize: 12, color: "#6b7280" }}>{getTimeAgo(order.createdAt)}</span>
         </div>
-        {isCompleted ? (
-          <button onClick={() => deleteOrder(order.id)} style={{ border: "none", background: "none", color: "#ef4444", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>🗑️ Sil</button>
-        ) : (
-          <span style={{
-            fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 8,
-            background: isPreparing ? "#dbeafe" : "#fef3c7", color: isPreparing ? "#1d4ed8" : "#b45309"
-          }}>
-            {isPreparing ? "HAZIRLANIYOR" : "YENİ SİPARİŞ"}
-          </span>
-        )}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+          {isCompleted ? (
+            <button onClick={() => deleteOrder(order.id)} style={{ border: "none", background: "none", color: "#ef4444", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>🗑️ Sil</button>
+          ) : (
+            <span style={{
+              fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 8,
+              background: isPreparing ? "#dbeafe" : "#fef3c7", color: isPreparing ? "#1d4ed8" : "#b45309"
+            }}>
+              {isPreparing ? "HAZIRLANIYOR" : "YENİ SİPARİŞ"}
+            </span>
+          )}
+          {order.paymentMethod && (
+            nakitBekliyor ? (
+              <span style={{ fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 8, background: "#ffedd5", color: "#c2410c" }}>
+                💵 Nakit — Teslimde Tahsil Et
+              </span>
+            ) : (
+              <span style={{ fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 8, background: "#dcfce7", color: "#15803d" }}>
+                ✓ Ödendi
+              </span>
+            )
+          )}
+        </div>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 16 }}>
@@ -226,12 +249,22 @@ function SiparisKarti({ order, updateOrderStatus, getTimeAgo, isCompleted, delet
         </div>
       )}
 
+      {!isCompleted && isPreparing && nakitBekliyor && (
+        <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", background: "#ffedd5", borderRadius: 12, marginBottom: 12, cursor: "pointer" }}>
+          <input type="checkbox" checked={nakitOnaylandi} onChange={e => setNakitOnaylandi(e.target.checked)} style={{ width: 16, height: 16 }} />
+          <span style={{ fontSize: 13, fontWeight: 600, color: "#c2410c" }}>Nakit Ödemesi Alındı</span>
+        </label>
+      )}
+
       {!isCompleted && (
         <button
-          onClick={() => updateOrderStatus(order.id, isPreparing ? "completed" : "preparing")}
+          onClick={() => isPreparing ? teslimEt() : updateOrderStatus(order.id, "preparing")}
+          disabled={isPreparing && nakitBekliyor && !nakitOnaylandi}
           style={{
-            width: "100%", padding: "16px", borderRadius: 16, border: "none", fontSize: 15, fontWeight: 700, cursor: "pointer",
-            background: isPreparing ? "#10b981" : "#111", color: "#fff"
+            width: "100%", padding: "16px", borderRadius: 16, border: "none", fontSize: 15, fontWeight: 700,
+            cursor: (isPreparing && nakitBekliyor && !nakitOnaylandi) ? "not-allowed" : "pointer",
+            background: (isPreparing && nakitBekliyor && !nakitOnaylandi) ? "#d1d5db" : (isPreparing ? "#10b981" : "#111"),
+            color: "#fff"
           }}
         >
           {isPreparing ? "✓ Hazır, Bildir" : "Hazırlamaya Başla"}

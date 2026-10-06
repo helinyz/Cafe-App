@@ -1,7 +1,7 @@
 export const tr = {
   hosgeldin: "Hoş geldiniz",
   arama: "Ürün ara...",
-  populer: "🔥 Popüler Ürünler",
+  populer: "Popüler Ürünler",
   enCokSiparis: "En çok sipariş edilenler",
   kategoriler: "Kategoriler",
   urunleriIncele: "Ürünleri İncele →",
@@ -13,7 +13,7 @@ export const tr = {
   toplam: "Toplam",
   siparisAlindi: "Siparişiniz alındı!",
   siparisAlindiAciklama: "Siparişiniz mutfağa iletildi, afiyet olsun!",
-  geriDon: "← Geri",
+  geriDon: "Geri",
   sonucBulunamadi: "Sonuç bulunamadı",
   garsonCagir: "Garson",
   hesap: "Hesap 🧾",

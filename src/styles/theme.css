@@ -1,0 +1,104 @@
+/* Flora Cafe — müşteri paneli tasarım sistemi ("Warm Organic")
+   Bkz. proje planı: sage + kremsi ton, editoryal serif başlıklar,
+   yumuşak yuvarlatılmış kartlar. */
+
+:root {
+  /* Yüzeyler */
+  --color-bg: #FAF7F2;
+  --color-surface: #FFFFFF;
+  --color-surface-alt: #F3EEE6;
+  --color-border: #E3D9CB;
+  --color-border-soft: #EFE7DB;
+
+  /* Sage (dekoratif / vurgu) */
+  --color-sage-light: #E9EDE5;
+  --color-sage: #8A9A86;
+  --color-sage-deep: #5E6B5A;
+
+  /* Terracotta (CTA) */
+  --color-terracotta: #A9552A;
+  --color-price: #8F4A20;
+
+  /* Metin */
+  --color-text: #2B211C;
+  --color-text-muted: #7A6F66;
+
+  /* Glutensiz rozet */
+  --color-gf-bg: #E4EAE1;
+  --color-gf-text: #3F4B3C;
+
+  /* Kategori kartı tonları */
+  --color-clay: #E6C4AB;
+  --color-cream: #EBE1D2;
+
+  /* Ödeme bilgi banner'ı */
+  --color-payment-bg: #F4E3D6;
+  --color-payment-text: #6E3517;
+
+  /* Şekil */
+  --radius-card: 24px;
+  --radius-card-lg: 26px;
+  --radius-sheet: 30px;
+  --radius-pill: 999px;
+
+  /* Gölge */
+  --shadow-soft: 0 14px 30px -20px rgba(43, 33, 28, 0.35);
+  --shadow-cta: 0 16px 28px -14px rgba(169, 85, 42, 0.9);
+
+  /* Tipografi */
+  --font-serif: "Fraunces", Georgia, serif;
+  --font-sans: "DM Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+
+  /* Düzen */
+  --app-max-width: 480px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@keyframes flora-pop-in {
+  0% { opacity: 0; transform: scale(0.85); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes flora-fade-up {
+  0% { opacity: 0; transform: translateY(8px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes flora-sheet-up {
+  0% { transform: translateY(100%); }
+  100% { transform: translateY(0); }
+}
+@keyframes flora-dot-bounce {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+  40% { transform: translateY(-4px); opacity: 1; }
+}
+
+.flora-pop-in { animation: flora-pop-in 220ms ease-out; }
+.flora-fade-up { animation: flora-fade-up 220ms ease-out; }
+.flora-sheet-up { animation: flora-sheet-up 260ms ease-out; }
+
+/* Glassmorphism: SADECE yüzen elemanlar için (alt bar, sticky header,
+   fotoğraf üstü rozetler) — gövde metninin arkasında asla kullanılmıyor. */
+.flora-glass {
+  background: rgba(250, 247, 242, 0.72);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+/* Sheet/modal overlay'leri tablet/masaüstünde de uygulamanın maksimum
+   genişliğine sabitlensin — tam ekrana yayılmasınlar. */
+.flora-overlay-content {
+  width: 100%;
+  max-width: var(--app-max-width);
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+/* Yatay kaydırılabilir şeritlerde scrollbar'ı gizle (App.css'teki genel
+   kural zaten bunu yapıyor, burada tekrar tanımlamaya gerek yok). */
