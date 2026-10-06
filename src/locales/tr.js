@@ -11,8 +11,8 @@ export const tr = {
   sepetim: "Sepetim",
   notEkle: "Not ekle... (az şekerli, buzlu vb.)",
   toplam: "Toplam",
-  siparisAlindi: "Siparişiniz alındı!",
-  siparisAlindiAciklama: "Siparişiniz mutfağa iletildi, afiyet olsun!",
+  siparisAlindi: "Siparişin alındı!",
+  siparisAlindiAciklama: "Mutfağa iletildi, afiyet olsun.",
   geriDon: "Geri",
   sonucBulunamadi: "Sonuç bulunamadı",
   garsonCagir: "Garson",
@@ -30,7 +30,7 @@ export const tr = {
   hesapIste: "Hesap İste 🔔",
   hesapYolda: "Hesap Yolda!",
   hesapYoldaAciklama: "Ekibimiz ödeme için masanıza yönlendirildi.",
-  menuyeDon: "Menüye Geri Dön",
+  menuyeDon: "Menüye dön",
   // Warm Organic yeniden tasarımı — ana sayfa
   masa: "Masa",
   slogan: "Taze kahve, ev yapımı lezzetler.",
@@ -63,5 +63,11 @@ export const tr = {
   kartNumarasi: "Kart numarası",
   sonKullanma: "Son kullanma",
   odemeyiOnayla: "Ödemeyi onayla",
-  simulasyonNotu: "Bu bir simülasyondur, gerçek bir ödeme işlemi yapılmaz."
+  simulasyonNotu: "Bu bir simülasyondur, gerçek bir ödeme işlemi yapılmaz.",
+  // sipariş onayı
+  siparisOzeti: "Sipariş özeti",
+  siparisNo: "Sipariş",
+  nakitBilgi: "Siparişin hazır olduğunda {tutar} ₺ nakit ödeyerek teslim alabilirsin.",
+  kartBilgi: "Ödemen alındı, siparişin hazırlanıyor.",
+  siparisHazirBildirim: "Siparişin hazır! Tezgâhtan teslim alabilirsin."
 };

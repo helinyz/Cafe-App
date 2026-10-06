@@ -3,8 +3,7 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { db } from "../firebase";
 import { collection, query, where, getDocs, addDoc, doc, serverTimestamp, onSnapshot } from "firebase/firestore";
 import {
-  Leaf, Bot, X, Send,
-  CheckCircle2, Banknote, CreditCard, Bell,
+  Leaf, Bot, X, Send, CreditCard,
 } from "lucide-react";
 
 // Warm Organic müşteri paneli bileşenleri
@@ -14,6 +13,8 @@ import CategoryHeader from "../components/customer/CategoryHeader";
 import ProductCard from "../components/customer/ProductCard";
 import BottomActionBar from "../components/customer/BottomActionBar";
 import CartSheet from "../components/customer/CartSheet";
+import OrderConfirmation from "../components/customer/OrderConfirmation";
+import OrderReadyBanner from "../components/customer/OrderReadyBanner";
 import PopularSection from "../components/customer/PopularSection";
 import CategoryGrid from "../components/customer/CategoryGrid";
 
@@ -100,7 +101,7 @@ export default function CustomerPage() {
   const [glutenFiltre, setGlutenFiltre] = useState(false);
 
   const [orderPlaced, setOrderPlaced] = useState(false);
-  const [sonSiparis, setSonSiparis] = useState(null); // { totalPrice, paymentMethod } - sonuç ekranında gösterilecek
+  const [sonSiparis, setSonSiparis] = useState(null); // { totalPrice, paymentMethod, items } - onay ekranında gösterilecek
 
   // SİPARİŞ HAZIR BİLDİRİMİ — sayfa açık kaldığı sürece son verilen siparişin
   // durumunu dinler, barista "completed" işaretleyince banner+ses gösterir.
@@ -255,7 +256,7 @@ export default function CustomerPage() {
     };
 
     const tamamla = (orderId) => {
-      setSonSiparis({ totalPrice, paymentMethod });
+      setSonSiparis({ totalPrice, paymentMethod, items: siparisVerisi.items });
       setSonSiparisId(orderId || null);
       setSiparisHazir(false);
       setCart([]);
@@ -344,44 +345,16 @@ export default function CustomerPage() {
   if (loading) return <div style={{ textAlign: "center", padding: 50, fontWeight: 700 }}>{t.yukleniyor}...</div>;
 
   if (orderPlaced) return (
-    <div style={{ maxWidth: 480, margin: "0 auto", padding: 24, minHeight: "100vh", background: theme.bgSubtle }}>
-      <SiparisHazirBanner siparisHazir={siparisHazir} onKapat={() => setSiparisHazir(false)} dil={dil} theme={theme} />
-      <div style={{ background: theme.bg, borderRadius: theme.radiusLg, padding: 30, textAlign: "center", border: `1px solid ${theme.border}`, boxShadow: theme.shadowSm, marginBottom: 20 }}>
-        <div style={{ width: 64, height: 64, borderRadius: "50%", background: theme.successSoft, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
-          <CheckCircle2 size={32} strokeWidth={2} color={theme.success} />
-        </div>
-        <h2 style={{ margin: "0 0 8px", fontSize: 21, fontWeight: 700, color: theme.textPrimary }}>{t.siparisAlindi}</h2>
-        <p style={{ color: theme.textSecondary, margin: 0, fontSize: 15 }}>{t.siparisAlindiAciklama}</p>
-      </div>
-
-      {sonSiparis?.paymentMethod === "kart" && (
-        <div style={{ background: theme.successSoft, borderRadius: theme.radiusLg, padding: 20, display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ width: 40, height: 40, borderRadius: "50%", background: theme.bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            <CreditCard size={19} strokeWidth={2} color={theme.success} />
-          </div>
-          <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: theme.success }}>
-            {dil === "tr" ? "Ödemeniz alındı, siparişiniz hazırlanıyor." : "Payment received, your order is being prepared."}
-          </p>
-        </div>
-      )}
-
-      {sonSiparis?.paymentMethod === "nakit" && (
-        <div style={{ background: theme.accentSoft, borderRadius: theme.radiusLg, padding: 20, display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ width: 40, height: 40, borderRadius: "50%", background: theme.bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            <Banknote size={19} strokeWidth={2} color={theme.accentText} />
-          </div>
-          <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: theme.accentText }}>
-            {dil === "tr"
-              ? `Siparişiniz alındı, hazır olduğunda ${sonSiparis.totalPrice} ₺ nakit ödemesi ile teslim alacaksınız.`
-              : `Your order is received — you'll pay ${sonSiparis.totalPrice} ₺ in cash when it's delivered.`}
-          </p>
-        </div>
-      )}
-
-      <button onClick={() => setOrderPlaced(false)} style={{ width: "100%", marginTop: 20, background: "none", border: "none", color: theme.textSecondary, fontWeight: 600, fontSize: 14, cursor: "pointer" }}>
-        {t.menuyeDon || "Menüye Geri Dön"}
-      </button>
-    </div>
+    <>
+      <OrderReadyBanner gorunur={siparisHazir} onKapat={() => setSiparisHazir(false)} t={t} />
+      <OrderConfirmation
+        siparis={sonSiparis}
+        siparisId={sonSiparisId}
+        tableNumber={tableNumber}
+        t={t}
+        onMenuyeDon={() => setOrderPlaced(false)}
+      />
+    </>
   );
 
   // KART ÖDEME (SİMÜLE) EKRANI — bilinçli olarak SADECE form + tek buton
@@ -445,7 +418,7 @@ export default function CustomerPage() {
 
   return (
     <div className="flora-app" style={{ paddingBottom: "calc(112px + env(safe-area-inset-bottom, 0px))" }}>
-      <SiparisHazirBanner siparisHazir={siparisHazir} onKapat={() => setSiparisHazir(false)} dil={dil} theme={theme} />
+      <OrderReadyBanner gorunur={siparisHazir} onKapat={() => setSiparisHazir(false)} t={t} />
 
       {/* ANA SAYFA HERO — kategori görünümünde aşağıdaki başlık kullanılıyor */}
       {!aktifKategori && (
@@ -616,27 +589,6 @@ export default function CustomerPage() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function SiparisHazirBanner({ siparisHazir, onKapat, dil, theme }) {
-  if (!siparisHazir) return null;
-  return (
-    <div style={{
-      position: "fixed", top: 0, left: 0, right: 0, zIndex: 500,
-      background: theme.accent, color: "#fff", padding: "14px 20px",
-      display: "flex", alignItems: "center", gap: 10, boxShadow: theme.shadowLg
-    }}>
-      <div style={{ width: 32, height: 32, borderRadius: "50%", background: "rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-        <Bell size={16} strokeWidth={2.2} />
-      </div>
-      <p style={{ margin: 0, fontSize: 14, fontWeight: 700, flex: 1 }}>
-        {dil === "tr" ? "☕ Siparişiniz hazır!" : "☕ Your order is ready!"}
-      </p>
-      <button onClick={onKapat} style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", display: "flex", flexShrink: 0, opacity: 0.85 }}>
-        <X size={18} strokeWidth={2} />
-      </button>
     </div>
   );
 }

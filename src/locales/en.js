@@ -12,7 +12,7 @@ export const en = {
   notEkle: "Add a note... (extra sugar, no ice, etc.)",
   toplam: "Total",
   siparisAlindi: "Order received!",
-  siparisAlindiAciklama: "Your order is sent to the kitchen, enjoy!",
+  siparisAlindiAciklama: "Sent to the kitchen — enjoy.",
   geriDon: "Back",
   sonucBulunamadi: "No results found",
   garsonCagir: "Waiter",
@@ -63,5 +63,11 @@ export const en = {
   kartNumarasi: "Card number",
   sonKullanma: "Expiry",
   odemeyiOnayla: "Confirm payment",
-  simulasyonNotu: "This is a simulation — no real payment is processed."
+  simulasyonNotu: "This is a simulation — no real payment is processed.",
+  // order confirmation
+  siparisOzeti: "Order summary",
+  siparisNo: "Order",
+  nakitBilgi: "Pay {tutar} ₺ in cash when you pick up your order.",
+  kartBilgi: "Payment received — your order is being prepared.",
+  siparisHazirBildirim: "Your order is ready! Pick it up at the counter."
 };
