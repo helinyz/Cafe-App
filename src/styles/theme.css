@@ -179,3 +179,47 @@
 }
 .flora-dot:nth-child(2) { animation-delay: 0.15s; }
 .flora-dot:nth-child(3) { animation-delay: 0.3s; }
+
+/* ===================== Barista paneli =====================
+   Aynı "Warm Organic" token'ları; panel tablet/masaüstünde tam genişlik
+   kullanıyor (müşteri tarafındaki 480px sütun sınırı yok). */
+:root {
+  --radius-panel-card: 22px;
+  --radius-column: 28px;
+  --radius-button: 16px;
+
+  /* Bağlantı / süre / not durum tonları — hepsi zeminleri üzerinde ≥ 6:1 */
+  --color-live-bg: #E4EAE1;
+  --color-live-text: #3F4B3C;
+  --color-live-dot: #4F8A5B;
+  --color-warn-bg: #FBEFD6;
+  --color-warn-text: #7A4F00;
+  --color-danger-bg: #F8E0DA;
+  --color-danger-text: #9A2B1C;
+  --color-note-bg: #FFF4CC;
+  --color-note-border: #F0DC8C;
+  --color-note-text: #5C4500;
+}
+
+.flora-panel {
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding: 24px clamp(16px, 2.4vw, 40px) 32px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+}
+.flora-panel button,
+.flora-panel input { font-family: inherit; }
+.flora-panel :focus-visible {
+  outline: 2px solid var(--color-sage-deep);
+  outline-offset: 2px;
+}
+
+/* "Canlı" göstergesindeki nabız atan nokta */
+@keyframes flora-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(79, 138, 91, 0.55); }
+  70% { box-shadow: 0 0 0 8px rgba(79, 138, 91, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(79, 138, 91, 0); }
+}
+.flora-pulse { animation: flora-pulse 1.8s ease-out infinite; }

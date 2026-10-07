@@ -1,18 +1,65 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { db, auth } from "../firebase";
 import { collection, onSnapshot, doc, updateDoc, deleteDoc, query, orderBy, limit } from "firebase/firestore";
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
+import { LayoutGrid, History } from "lucide-react";
 import { kisaSiparisNo } from "../utils/siparisNo";
+import { playBildirimSesi } from "../utils/bildirimSesi";
+import BaristaLogin from "../components/barista/BaristaLogin";
+import BaristaHeader from "../components/barista/BaristaHeader";
+import PanelTabs from "../components/barista/PanelTabs";
+
+// Sipariş durum akışı: pending → preparing → ready → completed.
+// "ready" = hazır, teslim bekliyor (müşteriye "siparişin hazır" bildirimi
+// bu anda gidiyor); "completed" = teslim edildi. "odendi" eski "Hesap İste"
+// akışından kalan, artık oluşmayan bir durum — sadece geçmişte görünüyor.
+const AKTIF_DURUMLAR = ["pending", "preparing", "ready"];
+
+const SES_TERCIHI_ANAHTARI = "barista_ses";
+
+function sesTercihiOku() {
+  try {
+    return localStorage.getItem(SES_TERCIHI_ANAHTARI) !== "kapali";
+  } catch {
+    return true;
+  }
+}
+
+function saatMetni() {
+  return new Date().toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
+}
+
+function PanelYukleniyor() {
+  return (
+    <main className="flora-panel" role="status" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14 }}>
+      <div style={{ display: "flex", gap: 6 }} aria-hidden="true">
+        <span className="flora-dot" /><span className="flora-dot" /><span className="flora-dot" />
+      </div>
+      <p style={{ margin: 0, fontFamily: "var(--font-serif)", fontSize: 18, color: "var(--color-text-muted)" }}>Yükleniyor…</p>
+    </main>
+  );
+}
 
 export default function BaristaPage() {
   const [user, setUser] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [loginError, setLoginError] = useState("");
   const [orders, setOrders] = useState([]);
-  const [hesapIstekleri, setHesapIstekleri] = useState([]);
   const [completedOrders, setCompletedOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("aktif");
+
+  // Canlı bağlantı göstergesi: Firestore anlık görüntüsü önbellekten
+  // geliyorsa (sunucuya ulaşılamıyorsa) ya da tarayıcı çevrimdışıysa "koptu".
+  const [sunucudan, setSunucudan] = useState(true);
+  const [cevrimici, setCevrimici] = useState(navigator.onLine);
+  const [saat, setSaat] = useState(saatMetni);
+
+  // Yeni sipariş sesi: tercih cihazda saklanıyor. Dinleyici yeniden
+  // kurulmasın diye güncel değer ref üzerinden okunuyor.
+  const [sesAcik, setSesAcik] = useState(sesTercihiOku);
+  const sesAcikRef = useRef(sesAcik);
+  const gorulenYeniSiparisler = useRef(null);
 
   // Sabit Cafe ID
   const CAFE_ID = "qCW9g5eYB4ycmkIHCHSZ";
@@ -23,6 +70,30 @@ export default function BaristaPage() {
       setAuthChecked(true);
     });
   }, []);
+
+  useEffect(() => {
+    const timer = setInterval(() => setSaat(saatMetni()), 15000);
+    const cevrimiciOl = () => setCevrimici(true);
+    const cevrimdisiOl = () => setCevrimici(false);
+    window.addEventListener("online", cevrimiciOl);
+    window.addEventListener("offline", cevrimdisiOl);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("online", cevrimiciOl);
+      window.removeEventListener("offline", cevrimdisiOl);
+    };
+  }, []);
+
+  const sesDegistir = () => {
+    const yeni = !sesAcik;
+    setSesAcik(yeni);
+    sesAcikRef.current = yeni;
+    try {
+      localStorage.setItem(SES_TERCIHI_ANAHTARI, yeni ? "acik" : "kapali");
+    } catch {
+      // tercih saklanamadı; bu oturum için yine de geçerli
+    }
+  };
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -37,17 +108,26 @@ export default function BaristaPage() {
   useEffect(() => {
     if (!user) return;
     const ordersRef = collection(db, "cafes", CAFE_ID, "orders");
-    
-    // Aktif ve Hesap İstekleri Dinleyicisi — yeni siparişler en üstte görünsün
-    const activeQuery = query(ordersRef, orderBy("createdAt", "desc"));
-    const unsubscribeActive = onSnapshot(activeQuery, (snapshot) => {
-      const tumVeriler = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      
-      // 1. Hesap İsteklerini Filtrele
-      setHesapIstekleri(tumVeriler.filter(s => s.status === "hesap"));
 
-      // 2. Hazırlanan veya Bekleyen Siparişleri Filtrele
-      setOrders(tumVeriler.filter(s => s.status === "pending" || s.status === "preparing"));
+    // Aktif siparişler — metadata değişiklikleri de dinleniyor ki bağlantı
+    // koptuğunda/geri geldiğinde gösterge güncellensin.
+    const activeQuery = query(ordersRef, orderBy("createdAt", "desc"));
+    const unsubscribeActive = onSnapshot(activeQuery, { includeMetadataChanges: true }, (snapshot) => {
+      setSunucudan(!snapshot.metadata.fromCache);
+      const aktifler = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .filter(s => AKTIF_DURUMLAR.includes(s.status));
+      setOrders(aktifler);
+
+      // İlk yüklemeden sonra gelen yeni "pending" siparişler için ses
+      const yeniIdler = aktifler.filter(s => s.status === "pending").map(s => s.id);
+      if (gorulenYeniSiparisler.current === null) {
+        gorulenYeniSiparisler.current = new Set(yeniIdler);
+      } else {
+        const gercektenYeni = yeniIdler.filter(id => !gorulenYeniSiparisler.current.has(id));
+        yeniIdler.forEach(id => gorulenYeniSiparisler.current.add(id));
+        if (gercektenYeni.length > 0 && sesAcikRef.current) playBildirimSesi();
+      }
     });
 
     // Tamamlanan Siparişler Dinleyicisi (Son 30)
@@ -61,6 +141,7 @@ export default function BaristaPage() {
     return () => {
       unsubscribeActive();
       unsubscribeCompleted();
+      gorulenYeniSiparisler.current = null;
     };
   }, [user]);
 
@@ -69,14 +150,6 @@ export default function BaristaPage() {
       await updateDoc(doc(db, "cafes", CAFE_ID, "orders", orderId), { status: newStatus, ...extraFields });
     } catch (err) {
       console.error("Hata:", err);
-    }
-  };
-
-  const hesabiKapat = async (orderId) => {
-    try {
-      await updateDoc(doc(db, "cafes", CAFE_ID, "orders", orderId), { status: "odendi" });
-    } catch (err) {
-      console.error("Hesap kapatma hatası:", err);
     }
   };
 
@@ -96,92 +169,62 @@ export default function BaristaPage() {
     return diffInMins < 1 ? "Az önce" : `${diffInMins} dk önce`;
   };
 
-  if (!authChecked) return <div style={{ textAlign: "center", marginTop: 50, fontWeight: 700 }}>Yükleniyor...</div>;
+  if (!authChecked) return <PanelYukleniyor />;
 
-  if (!user) return (
-    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh", background: "#f9fafb", fontFamily: "-apple-system, sans-serif" }}>
-      <form onSubmit={handleLogin} style={{ background: "#fff", padding: 32, borderRadius: 16, border: "1px solid #e5e7eb", width: "100%", maxWidth: 340, display: "flex", flexDirection: "column", gap: 14 }}>
-        <p style={{ margin: 0, fontSize: 20, fontWeight: 700, textAlign: "center" }}>Barista Girişi</p>
-        <input name="email" type="email" placeholder="E-posta" required style={{ padding: "11px 14px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
-        <input name="password" type="password" placeholder="Şifre" required style={{ padding: "11px 14px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
-        {loginError && <p style={{ margin: 0, fontSize: 12, color: "#b91c1c" }}>{loginError}</p>}
-        <button type="submit" style={{ padding: "12px 24px", borderRadius: 8, background: "#111", color: "#fff", border: "none", cursor: "pointer", fontWeight: 700 }}>Giriş Yap</button>
-      </form>
-    </div>
-  );
+  if (!user) return <BaristaLogin onSubmit={handleLogin} hata={loginError} />;
 
-  if (loading) return <div style={{ textAlign: "center", marginTop: 50, fontWeight: 700 }}>Yükleniyor...</div>;
+  if (loading) return <PanelYukleniyor />;
+
+  const sayilar = {
+    yeni: orders.filter(o => o.status === "pending").length,
+    hazirlaniyor: orders.filter(o => o.status === "preparing").length,
+    hazir: orders.filter(o => o.status === "ready").length,
+  };
+  const tahsilEdilecek = orders
+    .filter(o => o.paymentStatus === "beklemede")
+    .reduce((toplam, o) => toplam + (o.totalPrice || 0), 0);
 
   return (
-    <div style={{ fontFamily: "-apple-system, sans-serif", maxWidth: 600, margin: "0 auto", padding: "20px 16px 100px" }}>
+    <main className="flora-panel" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <BaristaHeader
+        bagli={sunucudan && cevrimici}
+        saat={saat}
+        sayilar={sayilar}
+        tahsilEdilecek={tahsilEdilecek}
+        sesAcik={sesAcik}
+        onSesDegistir={sesDegistir}
+        onCikis={() => signOut(auth)}
+      />
 
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 24 }}>
-        <div>
-          <p style={{ margin: 0, fontSize: 12, color: "#9ca3af", fontWeight: 700 }}>FLORA CAFE</p>
-          <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800 }}>Barista Paneli</h1>
-        </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-           <Badge color="#6d28d9" bg="#f5f3ff" count={hesapIstekleri.length} label="Hesap" />
-           <Badge color="#b45309" bg="#fef3c7" count={orders.length} label="Mutfak" />
-           <button onClick={() => signOut(auth)} style={{ padding: "6px 12px", borderRadius: 8, background: "#fff", border: "1px solid #e5e7eb", fontSize: 12, cursor: "pointer", fontWeight: 600 }}>Çıkış</button>
-        </div>
+      <div>
+        <PanelTabs
+          aktif={activeTab}
+          onSec={setActiveTab}
+          sekmeler={[
+            { key: "aktif", etiket: "Canlı takip", Icon: LayoutGrid, rozet: orders.length },
+            { key: "tamamlanan", etiket: "Geçmiş", Icon: History },
+          ]}
+        />
       </div>
 
-      {/* Tab Switcher */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, background: "#f3f4f6", padding: 6, borderRadius: 16, marginBottom: 24 }}>
-        <TabButton active={activeTab === "aktif"} onClick={() => setActiveTab("aktif")}>Canlı Takip</TabButton>
-        <TabButton active={activeTab === "tamamlanan"} onClick={() => setActiveTab("tamamlanan")}>Geçmiş</TabButton>
-      </div>
-
-      {/* İÇERİK ALANI */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        
-        {/* 1. HESAP İSTEKLERİ (Sadece Aktif Tabındaysa ve istek varsa göster) */}
-        {activeTab === "aktif" && hesapIstekleri.length > 0 && (
-          <div style={{ marginBottom: 10 }}>
-            <h3 style={{ fontSize: 16, fontWeight: 800, color: "#6d28d9", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
-               <span>🔔</span> Hesap İsteyen Masalar
-            </h3>
-            {hesapIstekleri.map(istek => (
-              <div key={istek.id} style={{
-                borderRadius: 20, border: "2px solid #8b5cf6", background: "#fff", 
-                marginBottom: 12, overflow: "hidden", boxShadow: "0 4px 12px rgba(109, 40, 217, 0.1)"
-              }}>
-                <div style={{ background: "#f5f3ff", padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: 18, fontWeight: 900, color: "#6d28d9" }}>Masa {istek.tableNumber}</span>
-                  <span style={{ fontWeight: 800, color: "#4c1d95", background: "#ddd6fe", padding: "4px 10px", borderRadius: 10, fontSize: 12 }}>
-                    {istek.odemeYontemi === "nakit" ? "💵 NAKİT" : "💳 KART"}
-                  </span>
-                </div>
-                <div style={{ padding: 12 }}>
-                  <button onClick={() => hesabiKapat(istek.id)} style={{ width: "100%", padding: 14, borderRadius: 12, background: "#8b5cf6", color: "#fff", border: "none", fontWeight: 700, cursor: "pointer" }}>
-                    Ödeme Alındı - Masayı Kapat
-                  </button>
-                </div>
-              </div>
-            ))}
-            <hr style={{ border: "none", borderTop: "1px solid #e5e7eb", margin: "20px 0" }} />
-          </div>
-        )}
-
-        {/* 2. NORMAL SİPARİŞLER */}
+      {/* İÇERİK ALANI — 2.-4. adımlarda pano / kart / geçmiş görünümüyle değişecek */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 640 }}>
         {(activeTab === "aktif" ? orders : completedOrders).map(order => (
-          <SiparisKarti 
-            key={order.id} 
-            order={order} 
-            updateOrderStatus={updateOrderStatus} 
-            deleteOrder={deleteOrder} 
+          <SiparisKarti
+            key={order.id}
+            order={order}
+            updateOrderStatus={updateOrderStatus}
+            deleteOrder={deleteOrder}
             getTimeAgo={getTimeAgo}
             isCompleted={activeTab === "tamamlanan" || order.status === "odendi"}
           />
         ))}
 
-        {(activeTab === "aktif" ? (orders.length + hesapIstekleri.length) : completedOrders.length) === 0 && (
-          <div style={{ textAlign: "center", padding: "40px", color: "#9ca3af" }}>Henüz hareket yok...</div>
+        {(activeTab === "aktif" ? orders.length : completedOrders.length) === 0 && (
+          <div style={{ textAlign: "center", padding: "40px", color: "var(--color-text-muted)" }}>Henüz hareket yok...</div>
         )}
       </div>
-    </div>
+    </main>
   );
 }
 
@@ -277,18 +320,3 @@ function SiparisKarti({ order, updateOrderStatus, getTimeAgo, isCompleted, delet
     </div>
   );
 }
-
-const Badge = ({ label, count, color, bg }) => (
-  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-    <span style={{ fontSize: 9, fontWeight: 800, color: "#9ca3af" }}>{label}</span>
-    <div style={{ background: bg, color: color, padding: "4px 10px", borderRadius: 10, fontSize: 12, fontWeight: 700 }}>{count}</div>
-  </div>
-);
-
-const TabButton = ({ active, children, onClick }) => (
-  <button onClick={onClick} style={{
-    padding: "10px", border: "none", borderRadius: 12, fontSize: 14, fontWeight: 700, cursor: "pointer",
-    background: active ? "#fff" : "transparent", color: active ? "#111" : "#6b7280",
-    transition: "all 0.2s"
-  }}>{children}</button>
-);

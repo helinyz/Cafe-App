@@ -23,6 +23,7 @@ import { en } from "../locales/en";
 
 // Çevrimdışı sipariş kuyruğu
 import { kuyruğaEkle, kuyruğuBoşalt } from "../utils/offlineQueue";
+import { playBildirimSesi } from "../utils/bildirimSesi";
 
 // "localhost" yerine 127.0.0.1: bkz. OwnerPage.jsx, bu makinede 8000 portunu
 // Docker da IPv6'da dinliyor ve "localhost" yanlış servise çözülebiliyor.
@@ -30,27 +31,6 @@ const RECS_API_URL = import.meta.env.VITE_RECS_API_URL || "http://127.0.0.1:8000
 
 // Müşteri paneli tasarım sistemi ("Warm Organic"): renk/tipografi/şekil
 // token'ları src/styles/theme.css'te CSS değişkeni olarak tanımlı.
-
-// Sipariş hazır bildirimi için kısa bir "bip" sesi — dosya eklemeden
-// Web Audio API ile üretiliyor. Tarayıcı ses politikaları nedeniyle
-// başarısız olabilir (örn. hiç kullanıcı etkileşimi olmadan), bu yüzden
-// sessizce yutuluyor — ses olmasa da görsel banner zaten gösteriliyor.
-function playBildirimSesi() {
-  try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.frequency.value = 880;
-    gain.gain.setValueAtTime(0.15, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.4);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.4);
-  } catch {
-    // ses çalınamadı, sorun değil
-  }
-}
 
 export default function CustomerPage() {
   const { cafeSlug } = useParams();
