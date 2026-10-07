@@ -1,5 +1,6 @@
 import { Check, Banknote, CreditCard, MapPin, Receipt } from "lucide-react";
 import Blob from "./Blob";
+import { kisaSiparisNo } from "../../utils/siparisNo";
 
 const pillStili = {
   display: "inline-flex", alignItems: "center", gap: 6, height: 36, padding: "0 14px",
@@ -7,11 +8,11 @@ const pillStili = {
   fontSize: 13, fontWeight: 700, color: "var(--color-sage-deep)"
 };
 
-// Sipariş onay ekranı. Sipariş numarası olarak Firestore belge id'sinin son 4
-// karakteri gösteriliyor; çevrimdışı kuyruğa alınan siparişin henüz id'si
+// Sipariş onay ekranı. Sipariş numarası barista kartındakiyle aynı
+// (bkz. utils/siparisNo.js); çevrimdışı kuyruğa alınan siparişin henüz id'si
 // olmadığı için o durumda numara pili gizleniyor.
 export default function OrderConfirmation({ siparis, siparisId, tableNumber, t, onMenuyeDon }) {
-  const kisaNo = siparisId ? siparisId.slice(-4).toUpperCase() : null;
+  const kisaNo = kisaSiparisNo(siparisId);
   const nakit = siparis?.paymentMethod === "nakit";
   const items = siparis?.items || [];
 

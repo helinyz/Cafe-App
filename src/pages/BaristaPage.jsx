@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { db, auth } from "../firebase";
 import { collection, onSnapshot, doc, updateDoc, deleteDoc, query, orderBy, limit } from "firebase/firestore";
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
+import { kisaSiparisNo } from "../utils/siparisNo";
 
 export default function BaristaPage() {
   const [user, setUser] = useState(null);
@@ -207,7 +208,10 @@ function SiparisKarti({ order, updateOrderStatus, getTimeAgo, isCompleted, delet
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
         <div>
           <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>Masa {order.tableNumber}</h3>
-          <span style={{ fontSize: 12, color: "#6b7280" }}>{getTimeAgo(order.createdAt)}</span>
+          <span style={{ fontSize: 12, color: "#6b7280" }}>
+            <span style={{ fontWeight: 700, color: "#374151", fontVariantNumeric: "tabular-nums" }}>#{kisaSiparisNo(order.id)}</span>
+            {" · "}{getTimeAgo(order.createdAt)}
+          </span>
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
           {isCompleted ? (
