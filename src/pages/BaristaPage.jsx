@@ -8,6 +8,8 @@ import { playBildirimSesi } from "../utils/bildirimSesi";
 import BaristaLogin from "../components/barista/BaristaLogin";
 import BaristaHeader from "../components/barista/BaristaHeader";
 import PanelTabs from "../components/barista/PanelTabs";
+import LiveBoard from "../components/barista/LiveBoard";
+import useMediaQuery from "../hooks/useMediaQuery";
 
 // Sipariş durum akışı: pending → preparing → ready → completed.
 // "ready" = hazır, teslim bekliyor (müşteriye "siparişin hazır" bildirimi
@@ -48,6 +50,7 @@ export default function BaristaPage() {
   const [completedOrders, setCompletedOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("aktif");
+  const genisEkran = useMediaQuery("(min-width: 1024px)");
 
   // Canlı bağlantı göstergesi: Firestore anlık görüntüsü önbellekten
   // geliyorsa (sunucuya ulaşılamıyorsa) ya da tarayıcı çevrimdışıysa "koptu".
@@ -185,7 +188,11 @@ export default function BaristaPage() {
     .reduce((toplam, o) => toplam + (o.totalPrice || 0), 0);
 
   return (
-    <main className="flora-panel" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+    <main className="flora-panel" style={{
+      display: "flex", flexDirection: "column", gap: 20,
+      // Geniş ekranda canlı pano ekranı tam kaplıyor; kaydırma sütunların içinde
+      ...(genisEkran && activeTab === "aktif" ? { height: "100dvh", overflow: "hidden" } : {})
+    }}>
       <BaristaHeader
         bagli={sunucudan && cevrimici}
         saat={saat}
@@ -207,23 +214,41 @@ export default function BaristaPage() {
         />
       </div>
 
-      {/* İÇERİK ALANI — 2.-4. adımlarda pano / kart / geçmiş görünümüyle değişecek */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 640 }}>
-        {(activeTab === "aktif" ? orders : completedOrders).map(order => (
-          <SiparisKarti
-            key={order.id}
-            order={order}
-            updateOrderStatus={updateOrderStatus}
-            deleteOrder={deleteOrder}
-            getTimeAgo={getTimeAgo}
-            isCompleted={activeTab === "tamamlanan" || order.status === "odendi"}
-          />
-        ))}
+      {/* CANLI PANO */}
+      {activeTab === "aktif" && (
+        <LiveBoard
+          orders={orders}
+          kartCiz={(order) => (
+            <SiparisKarti
+              key={order.id}
+              order={order}
+              updateOrderStatus={updateOrderStatus}
+              deleteOrder={deleteOrder}
+              getTimeAgo={getTimeAgo}
+              isCompleted={false}
+            />
+          )}
+        />
+      )}
 
-        {(activeTab === "aktif" ? orders.length : completedOrders.length) === 0 && (
-          <div style={{ textAlign: "center", padding: "40px", color: "var(--color-text-muted)" }}>Henüz hareket yok...</div>
-        )}
-      </div>
+      {/* GEÇMİŞ — 4. adımda yeni tablo görünümüyle değişecek */}
+      {activeTab === "tamamlanan" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 640 }}>
+          {completedOrders.map(order => (
+            <SiparisKarti
+              key={order.id}
+              order={order}
+              updateOrderStatus={updateOrderStatus}
+              deleteOrder={deleteOrder}
+              getTimeAgo={getTimeAgo}
+              isCompleted
+            />
+          ))}
+          {completedOrders.length === 0 && (
+            <div style={{ textAlign: "center", padding: "40px", color: "var(--color-text-muted)" }}>Henüz hareket yok...</div>
+          )}
+        </div>
+      )}
     </main>
   );
 }

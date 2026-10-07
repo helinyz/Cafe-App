@@ -20,7 +20,7 @@ export default function PanelTabs({ sekmeler, aktif, onSec }) {
               fontSize: 15, fontWeight: 700, display: "flex", alignItems: "center", gap: 8
             }}
           >
-            <Icon size={17} strokeWidth={2.1} aria-hidden="true" />
+            {Icon && <Icon size={17} strokeWidth={2.1} aria-hidden="true" />}
             {etiket}
             {rozet > 0 && (
               <span style={{
