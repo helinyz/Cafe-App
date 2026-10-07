@@ -69,5 +69,14 @@ export const tr = {
   siparisNo: "Sipariş",
   nakitBilgi: "Siparişin hazır olduğunda {tutar} ₺ nakit ödeyerek teslim alabilirsin.",
   kartBilgi: "Ödemen alındı, siparişin hazırlanıyor.",
-  siparisHazirBildirim: "Siparişin hazır! Tezgâhtan teslim alabilirsin."
+  siparisHazirBildirim: "Siparişin hazır! Tezgâhtan teslim alabilirsin.",
+  // menü asistanı
+  menuAsistaniAlt: "Menüyle ilgili her şeyi sorabilirsin",
+  asistanKarsilama: "Merhaba! Ben menü asistanınım. Fiyatlar, içerikler ya da glutensiz seçenekler hakkında sorabilirsin.",
+  asistanOneriler: ["Glutensiz ne var?", "Kahvenin yanına ne önerirsin?", "En popüler kahve hangisi?"],
+  soruSor: "Bir soru sor...",
+  gonder: "Gönder",
+  asistanYaziyor: "Asistan yazıyor",
+  asistanHata: "Bir hata oluştu.",
+  asistanUlasilamiyor: "Asistana şu an ulaşılamıyor."
 };

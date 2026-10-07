@@ -2,9 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { db } from "../firebase";
 import { collection, query, where, getDocs, addDoc, doc, serverTimestamp, onSnapshot } from "firebase/firestore";
-import {
-  Leaf, Bot, X, Send, CreditCard,
-} from "lucide-react";
+import { Leaf, CreditCard } from "lucide-react";
 
 // Warm Organic müşteri paneli bileşenleri
 import HomeHero from "../components/customer/HomeHero";
@@ -15,6 +13,7 @@ import BottomActionBar from "../components/customer/BottomActionBar";
 import CartSheet from "../components/customer/CartSheet";
 import OrderConfirmation from "../components/customer/OrderConfirmation";
 import OrderReadyBanner from "../components/customer/OrderReadyBanner";
+import AssistantSheet from "../components/customer/AssistantSheet";
 import PopularSection from "../components/customer/PopularSection";
 import CategoryGrid from "../components/customer/CategoryGrid";
 
@@ -29,29 +28,8 @@ import { kuyruğaEkle, kuyruğuBoşalt } from "../utils/offlineQueue";
 // Docker da IPv6'da dinliyor ve "localhost" yanlış servise çözülebiliyor.
 const RECS_API_URL = import.meta.env.VITE_RECS_API_URL || "http://127.0.0.1:8000";
 
-// Müşteri paneli tasarım sistemi: tek bir sıcak nötr palet + tek vurgu rengi
-// (terracotta). Bkz. proje planı — bilinçli olarak sıcak/kahve dükkanı
-// hissi verecek şekilde seçildi, soğuk mavi-gri tonlar yerine.
-const theme = {
-  bg: "#FFFFFF",
-  bgSubtle: "#FAFAF9",
-  bgMuted: "#F1EFEC",
-  border: "#E5E2DD",
-  textPrimary: "#211D18",
-  textSecondary: "#8A8578",
-  textMuted: "#B5AFA4",
-  accent: "#B5622A",
-  accentSoft: "#F5E6DB",
-  accentText: "#8C4A1F",
-  success: "#3F7A4C",
-  successSoft: "#EAF3EC",
-  successBorder: "#CFE3D5",
-  radiusSm: 10,
-  radiusMd: 18,
-  radiusLg: 28,
-  shadowSm: "0 2px 10px rgba(33,29,24,0.06)",
-  shadowLg: "0 10px 24px rgba(33,29,24,0.14)",
-};
+// Müşteri paneli tasarım sistemi ("Warm Organic"): renk/tipografi/şekil
+// token'ları src/styles/theme.css'te CSS değişkeni olarak tanımlı.
 
 // Sipariş hazır bildirimi için kısa bir "bip" sesi — dosya eklemeden
 // Web Audio API ile üretiliyor. Tarayıcı ses politikaları nedeniyle
@@ -296,8 +274,9 @@ export default function CustomerPage() {
     }
   };
 
-  const chatGonder = async () => {
-    const soru = chatInput.trim();
+  // metin verilirse (öneri chip'i) onu, verilmezse input'taki soruyu gönderir
+  const chatGonder = async (metin) => {
+    const soru = (typeof metin === "string" ? metin : chatInput).trim();
     if (!soru || chatYukleniyor) return;
     setChatMesajlar(prev => [...prev, { rol: "kullanici", metin: soru }]);
     setChatInput("");
@@ -309,9 +288,13 @@ export default function CustomerPage() {
         body: JSON.stringify({ question: soru, lang: dil })
       });
       const data = await res.json();
-      setChatMesajlar(prev => [...prev, { rol: "asistan", metin: data.answer || (dil === "tr" ? "Bir hata oluştu." : "Something went wrong.") }]);
+      setChatMesajlar(prev => [...prev, {
+        rol: "asistan",
+        metin: data.answer || t.asistanHata,
+        urunIdleri: data.mentioned_item_ids || []
+      }]);
     } catch {
-      setChatMesajlar(prev => [...prev, { rol: "asistan", metin: dil === "tr" ? "Asistana şu an ulaşılamıyor." : "Can't reach the assistant right now." }]);
+      setChatMesajlar(prev => [...prev, { rol: "asistan", metin: t.asistanUlasilamiyor }]);
     } finally {
       setChatYukleniyor(false);
     }
@@ -342,7 +325,14 @@ export default function CustomerPage() {
     setAktifKategori(kat);
   };
 
-  if (loading) return <div style={{ textAlign: "center", padding: 50, fontWeight: 700 }}>{t.yukleniyor}...</div>;
+  if (loading) return (
+    <div className="flora-app" role="status" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14 }}>
+      <div style={{ display: "flex", gap: 6 }} aria-hidden="true">
+        <span className="flora-dot" /><span className="flora-dot" /><span className="flora-dot" />
+      </div>
+      <p style={{ margin: 0, fontFamily: "var(--font-serif)", fontSize: 18, color: "var(--color-text-muted)" }}>{t.yukleniyor}…</p>
+    </div>
+  );
 
   if (orderPlaced) return (
     <>
@@ -534,60 +524,21 @@ export default function CustomerPage() {
         />
       )}
 
-      {/* MENÜ ASİSTANI PANELİ */}
+      {/* MENÜ ASİSTANI */}
       {chatAcik && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(33,29,24,0.55)", zIndex: 300, display: "flex", alignItems: "flex-end" }} onClick={() => setChatAcik(false)}>
-          <div style={{ background: theme.bg, width: "100%", borderTopLeftRadius: theme.radiusLg, borderTopRightRadius: theme.radiusLg, padding: "20px 20px 24px", maxHeight: "75vh", display: "flex", flexDirection: "column" }} onClick={e => e.stopPropagation()}>
-            <div style={{ width: 40, height: 4, background: theme.border, borderRadius: 2, margin: "-10px auto 14px" }}></div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <h2 style={{ margin: 0, fontWeight: 700, fontSize: 17, color: theme.textPrimary, display: "flex", alignItems: "center", gap: 7 }}>
-                <Bot size={18} strokeWidth={2} color={theme.accent} /> {dil === "tr" ? "Menü Asistanı" : "Menu Assistant"}
-              </h2>
-              <button onClick={() => setChatAcik(false)} style={{ background: "none", border: "none", cursor: "pointer", color: theme.textMuted, display: "flex" }}>
-                <X size={20} strokeWidth={2} />
-              </button>
-            </div>
-
-            <div style={{ flex: 1, overflowY: "auto", marginBottom: 12, minHeight: 120 }}>
-              {chatMesajlar.length === 0 && (
-                <p style={{ color: theme.textSecondary, fontSize: 13, textAlign: "center", marginTop: 20 }}>
-                  {dil === "tr" ? "Menü, fiyat veya glutensiz seçenekler hakkında soru sorabilirsin." : "Ask about the menu, prices, or gluten-free options."}
-                </p>
-              )}
-              {chatMesajlar.map((m, idx) => (
-                <div key={idx} style={{ display: "flex", justifyContent: m.rol === "kullanici" ? "flex-end" : "flex-start", marginBottom: 8 }}>
-                  <div style={{
-                    maxWidth: "80%", padding: "10px 14px", borderRadius: theme.radiusSm, fontSize: 14,
-                    background: m.rol === "kullanici" ? theme.textPrimary : theme.bgMuted,
-                    color: m.rol === "kullanici" ? "#fff" : theme.textPrimary
-                  }}>
-                    {m.metin}
-                  </div>
-                </div>
-              ))}
-              {chatYukleniyor && (
-                <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 8 }}>
-                  <div style={{ padding: "10px 14px", borderRadius: theme.radiusSm, fontSize: 14, background: theme.bgMuted, color: theme.textSecondary }}>
-                    {dil === "tr" ? "yazıyor..." : "typing..."}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div style={{ display: "flex", gap: 8 }}>
-              <input
-                value={chatInput}
-                onChange={e => setChatInput(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && chatGonder()}
-                placeholder={dil === "tr" ? "Bir soru sor..." : "Ask a question..."}
-                style={{ flex: 1, padding: "12px 14px", borderRadius: theme.radiusSm, border: `1px solid ${theme.border}`, outline: "none", fontSize: 14, boxSizing: "border-box", color: theme.textPrimary }}
-              />
-              <button onClick={chatGonder} disabled={chatYukleniyor} style={{ width: 44, borderRadius: theme.radiusSm, background: theme.accent, color: "#fff", border: "none", cursor: chatYukleniyor ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", opacity: chatYukleniyor ? 0.6 : 1 }}>
-                <Send size={17} strokeWidth={2.2} />
-              </button>
-            </div>
-          </div>
-        </div>
+        <AssistantSheet
+          mesajlar={chatMesajlar}
+          yukleniyor={chatYukleniyor}
+          input={chatInput}
+          onInputDegistir={setChatInput}
+          onGonder={chatGonder}
+          menu={menu}
+          cart={cart}
+          onEkle={addToCart}
+          dil={dil}
+          t={t}
+          onKapat={() => setChatAcik(false)}
+        />
       )}
     </div>
   );

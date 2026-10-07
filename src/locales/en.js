@@ -69,5 +69,14 @@ export const en = {
   siparisNo: "Order",
   nakitBilgi: "Pay {tutar} ₺ in cash when you pick up your order.",
   kartBilgi: "Payment received — your order is being prepared.",
-  siparisHazirBildirim: "Your order is ready! Pick it up at the counter."
+  siparisHazirBildirim: "Your order is ready! Pick it up at the counter.",
+  // menu assistant
+  menuAsistaniAlt: "Ask me anything about the menu",
+  asistanKarsilama: "Hi! I'm your menu assistant. Ask me about prices, ingredients or gluten-free options.",
+  asistanOneriler: ["What's gluten-free?", "What goes well with coffee?", "What's the most popular coffee?"],
+  soruSor: "Ask a question...",
+  gonder: "Send",
+  asistanYaziyor: "Assistant is typing",
+  asistanHata: "Something went wrong.",
+  asistanUlasilamiyor: "Can't reach the assistant right now."
 };

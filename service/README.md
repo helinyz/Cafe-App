@@ -71,10 +71,19 @@ uvicorn app.main:app --reload --port 8000
     context olarak Ollama'ya verilir) cevap üretir; menüde olmayan bir bilgi
     (alerjen, kalori, popülerlik vb.) istenirse tahmin etmez, "elimde yok,
     personele sor" der.
-  - Dönen veri: `{"answer": "...", "grounded": true|false, "context_item_ids": [...]}`.
+  - Dönen veri: `{"answer": "...", "grounded": true|false, "context_item_ids": [...], "mentioned_item_ids": [...]}`.
     `grounded`, modelin kendi bildirdiği bir bayrak — bkz. `eval/` klasörü,
     bu bayrağın ne kadar güvenilir olduğu elle etiketlenmiş bir soru
     setiyle ölçülüyor.
+  - `mentioned_item_ids`: cevapta adı geçen ürünler (müşteri panelinde mini
+    ürün kartı olarak gösteriliyor). Context'teki her ürün satırı kısa bir
+    numarayla (`#1`, `#2`, ...) başlıyor; model andığı ürünlerin numaralarını
+    `mentioned_items` alanında döndürüyor, servis bunları doğrulayıp gerçek
+    Firestore id'lerine çeviriyor. 20 karakterlik id'leri modele kopyalatmak
+    yerine kısa numara kullanmak, küçük yerel modelin id uydurma riskini
+    azaltıyor; geçersiz/aralık dışı numaralar yok sayılıyor, cevap metnine
+    sızan numaralar (`Cappuccino (#1)`) temizleniyor. Bu değişiklikten sonra
+    groundedness değerlendirmesi yeniden koşuldu: 14/14, öncekiyle aynı.
 
 ## RAG değerlendirmesi (Faz 3, tez için asıl katkı)
 
