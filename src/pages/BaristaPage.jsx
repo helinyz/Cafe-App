@@ -1,15 +1,16 @@
 import { useState, useEffect, useRef } from "react";
 import { db, auth } from "../firebase";
-import { collection, onSnapshot, doc, updateDoc, deleteDoc, query, orderBy, limit } from "firebase/firestore";
+import { collection, onSnapshot, doc, updateDoc, deleteDoc, query, where, orderBy, Timestamp } from "firebase/firestore";
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
 import { LayoutGrid, History } from "lucide-react";
-import { kisaSiparisNo } from "../utils/siparisNo";
 import { playBildirimSesi } from "../utils/bildirimSesi";
 import BaristaLogin from "../components/barista/BaristaLogin";
 import BaristaHeader from "../components/barista/BaristaHeader";
 import PanelTabs from "../components/barista/PanelTabs";
 import LiveBoard from "../components/barista/LiveBoard";
 import OrderCard from "../components/barista/OrderCard";
+import HistoryView from "../components/barista/HistoryView";
+import { gunlerOncesi } from "../utils/zaman";
 import useMediaQuery from "../hooks/useMediaQuery";
 
 // Sipariş durum akışı: pending → preparing → ready → completed.
@@ -134,8 +135,16 @@ export default function BaristaPage() {
       }
     });
 
-    // Tamamlanan Siparişler Dinleyicisi (Son 30)
-    const completedQuery = query(ordersRef, orderBy("createdAt", "desc"), limit(30));
+    // Geçmiş: son 7 takvim gününün tamamlanmış siparişleri ("Son 7 gün"
+    // filtresinin doğru olması için eski "son 30 kayıt" sınırı yerine tarih aralığı).
+    // Sayfa gün boyu açık kalırsa aralık, dinleyici yeniden kurulana kadar
+    // açılış anına göre kalıyor — "Bugün" filtresi istemci tarafında hesaplandığı
+    // için doğru kalmaya devam ediyor.
+    const completedQuery = query(
+      ordersRef,
+      where("createdAt", ">=", Timestamp.fromDate(gunlerOncesi(7))),
+      orderBy("createdAt", "desc")
+    );
     const unsubscribeCompleted = onSnapshot(completedQuery, (snapshot) => {
       const ordersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setCompletedOrders(ordersData.filter(o => o.status === "completed" || o.status === "odendi"));
@@ -160,20 +169,15 @@ export default function BaristaPage() {
     }
   };
 
+  // Onay satır içinde (HistoryRow) soruluyor; başarılıysa true döner.
   const deleteOrder = async (orderId) => {
-    if (window.confirm("Bu kaydı kalıcı olarak silmek istediğine emin misin?")) {
-      try {
-        await deleteDoc(doc(db, "cafes", CAFE_ID, "orders", orderId));
-      } catch (err) {
-        console.error("Silme hatası:", err);
-      }
+    try {
+      await deleteDoc(doc(db, "cafes", CAFE_ID, "orders", orderId));
+      return true;
+    } catch (err) {
+      console.error("Silme hatası:", err);
+      return false;
     }
-  };
-
-  const getTimeAgo = (timestamp) => {
-    if (!timestamp) return "Az önce";
-    const diffInMins = Math.floor((new Date() - timestamp.toDate()) / 60000);
-    return diffInMins < 1 ? "Az önce" : `${diffInMins} dk önce`;
   };
 
   if (!authChecked) return <PanelYukleniyor />;
@@ -230,117 +234,8 @@ export default function BaristaPage() {
         />
       )}
 
-      {/* GEÇMİŞ — 4. adımda yeni tablo görünümüyle değişecek */}
-      {activeTab === "tamamlanan" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 640 }}>
-          {completedOrders.map(order => (
-            <SiparisKarti
-              key={order.id}
-              order={order}
-              updateOrderStatus={updateOrderStatus}
-              deleteOrder={deleteOrder}
-              getTimeAgo={getTimeAgo}
-              isCompleted
-            />
-          ))}
-          {completedOrders.length === 0 && (
-            <div style={{ textAlign: "center", padding: "40px", color: "var(--color-text-muted)" }}>Henüz hareket yok...</div>
-          )}
-        </div>
-      )}
+      {/* GEÇMİŞ */}
+      {activeTab === "tamamlanan" && <HistoryView siparisler={completedOrders} onSil={deleteOrder} />}
     </main>
-  );
-}
-
-function SiparisKarti({ order, updateOrderStatus, getTimeAgo, isCompleted, deleteOrder }) {
-  const isPreparing = order.status === "preparing";
-  const nakitBekliyor = order.paymentStatus === "beklemede";
-  const [nakitOnaylandi, setNakitOnaylandi] = useState(false);
-
-  const teslimEt = () => {
-    if (nakitBekliyor) {
-      updateOrderStatus(order.id, "completed", { paymentStatus: "odendi" });
-    } else {
-      updateOrderStatus(order.id, "completed");
-    }
-  };
-
-  return (
-    <div style={{
-      borderRadius: 22, border: "1px solid",
-      borderColor: isCompleted ? "#f3f4f6" : (isPreparing ? "#bfdbfe" : "#fde68a"),
-      background: isCompleted ? "#fafafa" : (isPreparing ? "#eff6ff" : "#fffbeb"),
-      padding: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
-    }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
-        <div>
-          <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>Masa {order.tableNumber}</h3>
-          <span style={{ fontSize: 12, color: "#6b7280" }}>
-            <span style={{ fontWeight: 700, color: "#374151", fontVariantNumeric: "tabular-nums" }}>#{kisaSiparisNo(order.id)}</span>
-            {" · "}{getTimeAgo(order.createdAt)}
-          </span>
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
-          {isCompleted ? (
-            <button onClick={() => deleteOrder(order.id)} style={{ border: "none", background: "none", color: "#ef4444", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>🗑️ Sil</button>
-          ) : (
-            <span style={{
-              fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 8,
-              background: isPreparing ? "#dbeafe" : "#fef3c7", color: isPreparing ? "#1d4ed8" : "#b45309"
-            }}>
-              {isPreparing ? "HAZIRLANIYOR" : "YENİ SİPARİŞ"}
-            </span>
-          )}
-          {order.paymentMethod && (
-            nakitBekliyor ? (
-              <span style={{ fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 8, background: "#ffedd5", color: "#c2410c" }}>
-                💵 Nakit — Teslimde Tahsil Et
-              </span>
-            ) : (
-              <span style={{ fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 8, background: "#dcfce7", color: "#15803d" }}>
-                ✓ Ödendi
-              </span>
-            )
-          )}
-        </div>
-      </div>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 16 }}>
-        {order.items?.map((item, idx) => (
-          <div key={idx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontWeight: 600, fontSize: 16, color: "#111" }}>{item.name}</span>
-            <span style={{ fontWeight: 800, fontSize: 14, background: "rgba(0,0,0,0.05)", padding: "4px 10px", borderRadius: 8 }}>x{item.qty}</span>
-          </div>
-        ))}
-      </div>
-
-      {order.not && (
-        <div style={{ padding: "10px 12px", background: "#fff", borderRadius: 12, border: "1px solid #fde68a", marginBottom: 16 }}>
-          <p style={{ margin: 0, fontSize: 13, color: "#92400e", fontWeight: 500 }}>📝 {order.not}</p>
-        </div>
-      )}
-
-      {!isCompleted && isPreparing && nakitBekliyor && (
-        <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", background: "#ffedd5", borderRadius: 12, marginBottom: 12, cursor: "pointer" }}>
-          <input type="checkbox" checked={nakitOnaylandi} onChange={e => setNakitOnaylandi(e.target.checked)} style={{ width: 16, height: 16 }} />
-          <span style={{ fontSize: 13, fontWeight: 600, color: "#c2410c" }}>Nakit Ödemesi Alındı</span>
-        </label>
-      )}
-
-      {!isCompleted && (
-        <button
-          onClick={() => isPreparing ? teslimEt() : updateOrderStatus(order.id, "preparing")}
-          disabled={isPreparing && nakitBekliyor && !nakitOnaylandi}
-          style={{
-            width: "100%", padding: "16px", borderRadius: 16, border: "none", fontSize: 15, fontWeight: 700,
-            cursor: (isPreparing && nakitBekliyor && !nakitOnaylandi) ? "not-allowed" : "pointer",
-            background: (isPreparing && nakitBekliyor && !nakitOnaylandi) ? "#d1d5db" : (isPreparing ? "#10b981" : "#111"),
-            color: "#fff"
-          }}
-        >
-          {isPreparing ? "✓ Hazır, Bildir" : "Hazırlamaya Başla"}
-        </button>
-      )}
-    </div>
   );
 }
