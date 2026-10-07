@@ -9,6 +9,7 @@ import BaristaLogin from "../components/barista/BaristaLogin";
 import BaristaHeader from "../components/barista/BaristaHeader";
 import PanelTabs from "../components/barista/PanelTabs";
 import LiveBoard from "../components/barista/LiveBoard";
+import OrderCard from "../components/barista/OrderCard";
 import useMediaQuery from "../hooks/useMediaQuery";
 
 // Sipariş durum akışı: pending → preparing → ready → completed.
@@ -148,11 +149,14 @@ export default function BaristaPage() {
     };
   }, [user]);
 
+  // Başarılıysa true döner; kart hata durumunu kullanıcıya gösterebilsin diye.
   const updateOrderStatus = async (orderId, newStatus, extraFields = {}) => {
     try {
       await updateDoc(doc(db, "cafes", CAFE_ID, "orders", orderId), { status: newStatus, ...extraFields });
+      return true;
     } catch (err) {
       console.error("Hata:", err);
+      return false;
     }
   };
 
@@ -219,14 +223,9 @@ export default function BaristaPage() {
         <LiveBoard
           orders={orders}
           kartCiz={(order) => (
-            <SiparisKarti
-              key={order.id}
-              order={order}
-              updateOrderStatus={updateOrderStatus}
-              deleteOrder={deleteOrder}
-              getTimeAgo={getTimeAgo}
-              isCompleted={false}
-            />
+            // key'e durum da ekli: sütun değiştiren kart yeniden oluşup
+            // kısa giriş animasyonunu oynatıyor, işlem durumu sıfırlanıyor
+            <OrderCard key={`${order.id}-${order.status}`} order={order} onDurumGuncelle={updateOrderStatus} />
           )}
         />
       )}

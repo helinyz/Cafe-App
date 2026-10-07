@@ -62,7 +62,7 @@ export default function CustomerPage() {
   const [sonSiparis, setSonSiparis] = useState(null); // { totalPrice, paymentMethod, items } - onay ekranında gösterilecek
 
   // SİPARİŞ HAZIR BİLDİRİMİ — sayfa açık kaldığı sürece son verilen siparişin
-  // durumunu dinler, barista "completed" işaretleyince banner+ses gösterir.
+  // durumunu dinler, barista "ready" (hazır) işaretleyince banner+ses gösterir.
   const [sonSiparisId, setSonSiparisId] = useState(null);
   const [siparisHazir, setSiparisHazir] = useState(false);
 
@@ -158,11 +158,20 @@ export default function CustomerPage() {
 
   useEffect(() => {
     if (!cafeId || !sonSiparisId) return;
+    // Barista "Hazır olarak işaretle" deyince durum "ready" oluyor: bildirim
+    // + ses yalnızca bu geçişte bir kez. Barista "Geri al" ile siparişi
+    // hazırlanıyora döndürürse bildirim kalkıyor; teslimde ("completed")
+    // müşteri zaten tezgâhta olduğu için bildirime dokunulmuyor.
+    let oncekiDurum = null;
     const unsub = onSnapshot(doc(db, "cafes", cafeId, "orders", sonSiparisId), (snap) => {
-      if (snap.data()?.status === "completed") {
+      const durum = snap.data()?.status;
+      if (durum === "ready" && oncekiDurum !== "ready") {
         setSiparisHazir(true);
         playBildirimSesi();
+      } else if (durum === "pending" || durum === "preparing") {
+        setSiparisHazir(false);
       }
+      oncekiDurum = durum;
     });
     return unsub;
   }, [cafeId, sonSiparisId]);
