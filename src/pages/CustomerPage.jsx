@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { db } from "../firebase";
-import { collection, query, where, getDocs, addDoc, doc, serverTimestamp, onSnapshot } from "firebase/firestore";
+import { collection, query, where, getDocs, addDoc, serverTimestamp, onSnapshot } from "firebase/firestore";
 import { Leaf, CreditCard } from "lucide-react";
 
 // Warm Organic müşteri paneli bileşenleri
@@ -13,6 +13,8 @@ import BottomActionBar from "../components/customer/BottomActionBar";
 import CartSheet from "../components/customer/CartSheet";
 import OrderConfirmation from "../components/customer/OrderConfirmation";
 import OrderReadyBanner from "../components/customer/OrderReadyBanner";
+import OrderStatusStrip from "../components/customer/OrderStatusStrip";
+import useSiparisTakibi from "../hooks/useSiparisTakibi";
 import AssistantSheet from "../components/customer/AssistantSheet";
 import PopularSection from "../components/customer/PopularSection";
 import CategoryGrid from "../components/customer/CategoryGrid";
@@ -23,7 +25,6 @@ import { en } from "../locales/en";
 
 // Çevrimdışı sipariş kuyruğu
 import { kuyruğaEkle, kuyruğuBoşalt } from "../utils/offlineQueue";
-import { playBildirimSesi } from "../utils/bildirimSesi";
 
 // "localhost" yerine 127.0.0.1: bkz. OwnerPage.jsx, bu makinede 8000 portunu
 // Docker da IPv6'da dinliyor ve "localhost" yanlış servise çözülebiliyor.
@@ -61,10 +62,9 @@ export default function CustomerPage() {
   const [orderPlaced, setOrderPlaced] = useState(false);
   const [sonSiparis, setSonSiparis] = useState(null); // { totalPrice, paymentMethod, items } - onay ekranında gösterilecek
 
-  // SİPARİŞ HAZIR BİLDİRİMİ — sayfa açık kaldığı sürece son verilen siparişin
-  // durumunu dinler, barista "ready" (hazır) işaretleyince banner+ses gösterir.
+  // Onay ekranında gösterilen son siparişin id'si. Canlı durum takibi ve
+  // "siparişin hazır" bildirimi useSiparisTakibi'de (aşağıda).
   const [sonSiparisId, setSonSiparisId] = useState(null);
-  const [siparisHazir, setSiparisHazir] = useState(false);
 
   // KART ÖDEME (simüle) EKRANI
   const [kartOdemeAcik, setKartOdemeAcik] = useState(false);
@@ -76,6 +76,11 @@ export default function CustomerPage() {
 
   const [dil, setDil] = useState(localStorage.getItem("kafe_dil") || "tr");
   const t = dil === "tr" ? tr : en;
+
+  // SİPARİŞ DURUMU TAKİBİ — açık siparişler cihazda saklanıp canlı dinleniyor;
+  // barista "Hazır olarak işaretle" deyince bant + ses + titreşim.
+  const { aktifSiparisler, hazirIdler, takipEkle, bildirimKapat } = useSiparisTakibi(cafeId, cafeSlug, t.hazirSekmeBasligi);
+  const hazirBandiniKapat = () => hazirIdler.forEach(bildirimKapat);
 
   const dilDegistir = (yeniDil) => {
     setDil(yeniDil);
@@ -156,26 +161,6 @@ export default function CustomerPage() {
     return () => window.removeEventListener("online", flushOnReconnect);
   }, [cafeId]);
 
-  useEffect(() => {
-    if (!cafeId || !sonSiparisId) return;
-    // Barista "Hazır olarak işaretle" deyince durum "ready" oluyor: bildirim
-    // + ses yalnızca bu geçişte bir kez. Barista "Geri al" ile siparişi
-    // hazırlanıyora döndürürse bildirim kalkıyor; teslimde ("completed")
-    // müşteri zaten tezgâhta olduğu için bildirime dokunulmuyor.
-    let oncekiDurum = null;
-    const unsub = onSnapshot(doc(db, "cafes", cafeId, "orders", sonSiparisId), (snap) => {
-      const durum = snap.data()?.status;
-      if (durum === "ready" && oncekiDurum !== "ready") {
-        setSiparisHazir(true);
-        playBildirimSesi();
-      } else if (durum === "pending" || durum === "preparing") {
-        setSiparisHazir(false);
-      }
-      oncekiDurum = durum;
-    });
-    return unsub;
-  }, [cafeId, sonSiparisId]);
-
   // YARDIMCI FONKSİYONLAR
   const getKategoriIsmi = (kat) => {
     if (dil === "tr") return kat;
@@ -225,7 +210,7 @@ export default function CustomerPage() {
     const tamamla = (orderId) => {
       setSonSiparis({ totalPrice, paymentMethod, items: siparisVerisi.items });
       setSonSiparisId(orderId || null);
-      setSiparisHazir(false);
+      if (orderId) takipEkle(orderId); // çevrimdışı kuyruktaki siparişin henüz id'si yok
       setCart([]);
       setSiparisNotu("");
       setSepetAcik(false);
@@ -325,10 +310,11 @@ export default function CustomerPage() {
 
   if (orderPlaced) return (
     <>
-      <OrderReadyBanner gorunur={siparisHazir} onKapat={() => setSiparisHazir(false)} t={t} />
+      <OrderReadyBanner gorunur={hazirIdler.length > 0} onKapat={hazirBandiniKapat} t={t} />
       <OrderConfirmation
         siparis={sonSiparis}
         siparisId={sonSiparisId}
+        canliDurum={aktifSiparisler.find(x => x.id === sonSiparisId)?.durum}
         tableNumber={tableNumber}
         t={t}
         onMenuyeDon={() => setOrderPlaced(false)}
@@ -397,7 +383,7 @@ export default function CustomerPage() {
 
   return (
     <div className="flora-app" style={{ paddingBottom: "calc(112px + env(safe-area-inset-bottom, 0px))" }}>
-      <OrderReadyBanner gorunur={siparisHazir} onKapat={() => setSiparisHazir(false)} t={t} />
+      <OrderReadyBanner gorunur={hazirIdler.length > 0} onKapat={hazirBandiniKapat} t={t} />
 
       {/* ANA SAYFA HERO — kategori görünümünde aşağıdaki başlık kullanılıyor */}
       {!aktifKategori && (
@@ -424,6 +410,9 @@ export default function CustomerPage() {
           t={t}
         />
       )}
+
+      {/* AÇIK SİPARİŞLERİN CANLI DURUMU */}
+      <OrderStatusStrip siparisler={aktifSiparisler} t={t} style={{ padding: "16px 20px 0" }} />
 
       {/* ARAMA VE FİLTRE CHIP'LERİ — ana sayfada arama + tüm chip'ler,
           kategori içinde sadece Tümü / Glutensiz */}

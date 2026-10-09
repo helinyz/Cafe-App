@@ -78,5 +78,11 @@ export const tr = {
   gonder: "Gönder",
   asistanYaziyor: "Asistan yazıyor",
   asistanHata: "Bir hata oluştu.",
-  asistanUlasilamiyor: "Asistana şu an ulaşılamıyor."
+  asistanUlasilamiyor: "Asistana şu an ulaşılamıyor.",
+  // sipariş durumu takibi
+  durumAlindi: "Sipariş alındı",
+  durumHazirlaniyor: "Hazırlanıyor",
+  durumHazir: "Hazır, tezgâhtan alabilirsin",
+  hazirSekmeBasligi: "Siparişin hazır!",
+  siparisDurumu: "Sipariş durumu"
 };

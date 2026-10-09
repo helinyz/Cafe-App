@@ -1,5 +1,6 @@
 import { Check, Banknote, CreditCard, MapPin, Receipt } from "lucide-react";
 import Blob from "./Blob";
+import OrderStatusStrip from "./OrderStatusStrip";
 import { kisaSiparisNo } from "../../utils/siparisNo";
 
 const pillStili = {
@@ -11,7 +12,7 @@ const pillStili = {
 // Sipariş onay ekranı. Sipariş numarası barista kartındakiyle aynı
 // (bkz. utils/siparisNo.js); çevrimdışı kuyruğa alınan siparişin henüz id'si
 // olmadığı için o durumda numara pili gizleniyor.
-export default function OrderConfirmation({ siparis, siparisId, tableNumber, t, onMenuyeDon }) {
+export default function OrderConfirmation({ siparis, siparisId, canliDurum, tableNumber, t, onMenuyeDon }) {
   const kisaNo = kisaSiparisNo(siparisId);
   const nakit = siparis?.paymentMethod === "nakit";
   const items = siparis?.items || [];
@@ -48,6 +49,8 @@ export default function OrderConfirmation({ siparis, siparisId, tableNumber, t, 
       </header>
 
       <div className="flora-fade-up" style={{ padding: "22px 20px 0", display: "flex", flexDirection: "column", gap: 14 }}>
+        {/* Bu siparişin canlı durumu: alındı → hazırlanıyor → hazır */}
+        <OrderStatusStrip siparisler={canliDurum ? [{ id: siparisId, durum: canliDurum }] : []} t={t} />
         {items.length > 0 && (
           <section style={{
             background: "var(--color-surface)", borderRadius: "var(--radius-card)", padding: "18px 20px",

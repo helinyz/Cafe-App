@@ -78,5 +78,11 @@ export const en = {
   gonder: "Send",
   asistanYaziyor: "Assistant is typing",
   asistanHata: "Something went wrong.",
-  asistanUlasilamiyor: "Can't reach the assistant right now."
+  asistanUlasilamiyor: "Can't reach the assistant right now.",
+  // order status tracking
+  durumAlindi: "Order received",
+  durumHazirlaniyor: "Being prepared",
+  durumHazir: "Ready, pick it up at the counter",
+  hazirSekmeBasligi: "Your order is ready!",
+  siparisDurumu: "Order status"
 };
